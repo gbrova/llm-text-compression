@@ -53,20 +53,24 @@ class LLMRanker:
         ranks = []
         
         with torch.no_grad():
-            for i in range(1, tokens.shape[1]):  # Start from 1 since we need previous context
-                # Get context up to current position (respecting max context length)
-                start_idx = max(0, i - self.max_context_length + 1)
-                context = tokens[:, start_idx:i]
+            for i in range(tokens.shape[1]):  # Start from 0 to include first token
+                if i == 0:
+                    # For first token, use empty context (beginning of sequence)
+                    context = torch.empty((1, 0), dtype=torch.long).to(self.device)
+                else:
+                    # Get context up to current position (respecting max context length)
+                    start_idx = max(0, i - self.max_context_length)
+                    context = tokens[:, start_idx:i]
                 
                 # Get model predictions for next token
                 outputs = self.model(context)
-                logits = outputs.logits[0, -1, :]  # Last position logits
+                logits = outputs.logits[0, -1, :] if context.shape[1] > 0 else outputs.logits[0, 0, :]
                 
                 # Get probabilities and sort by likelihood
                 probs = torch.softmax(logits, dim=-1)
                 sorted_indices = torch.argsort(probs, descending=True)
                 
-                # Find rank of actual next token
+                # Find rank of actual token
                 actual_token = tokens[0, i].item()
                 rank = (sorted_indices == actual_token).nonzero(as_tuple=True)[0].item() + 1
                 ranks.append(rank)
