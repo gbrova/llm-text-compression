@@ -20,3 +20,14 @@ if __name__ == "__main__":
     longer_ranks = ranker.get_token_ranks(longer_text)
     print(f"Longer text: '{longer_text}'")
     print(f"Ranks: {longer_ranks}")
+    
+    # Test round-trip: ranks -> string
+    print("\n--- Testing reverse function ---")
+    reconstructed = ranker.get_string_from_token_ranks(ranks)
+    print(f"Original: '{text}'")
+    print(f"Reconstructed: '{reconstructed}'")
+    
+    # Test with custom ranks
+    custom_ranks = [1, 1, 1]  # Always pick most likely token
+    custom_text = ranker.get_string_from_token_ranks(custom_ranks)
+    print(f"Most likely tokens: '{custom_text}'")

@@ -84,6 +84,55 @@ class LLMRanker:
     def get_context_length(self) -> int:
         """Get the maximum context length being used."""
         return self.max_context_length
+    
+    def get_string_from_token_ranks(self, ranks: List[int], max_length: Optional[int] = None) -> str:
+        """
+        Generate a string by selecting tokens based on their ranks.
+        
+        Args:
+            ranks: List of ranks (1-indexed) for each position
+            max_length: Maximum length to generate (default: len(ranks))
+            
+        Returns:
+            Generated text string
+        """
+        if not ranks:
+            return ""
+        
+        max_length = max_length or len(ranks)
+        tokens = []
+        
+        with torch.no_grad():
+            for i in range(min(len(ranks), max_length)):
+                if i == 0:
+                    # For first token, use empty context (beginning of sequence)
+                    context = torch.empty((1, 0), dtype=torch.long).to(self.device)
+                else:
+                    # Get context up to current position (respecting max context length)
+                    start_idx = max(0, len(tokens) - self.max_context_length)
+                    context_tokens = tokens[start_idx:]
+                    context = torch.tensor([context_tokens], dtype=torch.long).to(self.device)
+                
+                # Get model predictions for next token
+                outputs = self.model(context)
+                logits = outputs.logits[0, -1, :] if context.shape[1] > 0 else outputs.logits[0, 0, :]
+                
+                # Get probabilities and sort by likelihood
+                probs = torch.softmax(logits, dim=-1)
+                sorted_indices = torch.argsort(probs, descending=True)
+                
+                # Select token at the specified rank (convert from 1-indexed to 0-indexed)
+                target_rank = ranks[i] - 1
+                if target_rank < len(sorted_indices):
+                    selected_token = sorted_indices[target_rank].item()
+                else:
+                    # If rank is out of bounds, use the least likely token
+                    selected_token = sorted_indices[-1].item()
+                
+                tokens.append(selected_token)
+        
+        # Decode tokens to string
+        return self.tokenizer.decode(tokens, skip_special_tokens=True)
 
 
 def rank_tokens(text: str, model_name: str = "gpt2") -> List[int]:
