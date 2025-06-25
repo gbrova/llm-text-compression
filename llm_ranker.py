@@ -63,8 +63,15 @@ class LLMRanker:
                     context = tokens[:, start_idx:i]
                 
                 # Get model predictions for next token
-                outputs = self.model(context)
-                logits = outputs.logits[0, -1, :] if context.shape[1] > 0 else outputs.logits[0, 0, :]
+                if context.shape[1] == 0:
+                    # For empty context, we need to use BOS token or handle specially
+                    # Use a single BOS token as minimal context
+                    bos_context = torch.tensor([[self.tokenizer.bos_token_id or self.tokenizer.eos_token_id]], dtype=torch.long).to(self.device)
+                    outputs = self.model(bos_context)
+                    logits = outputs.logits[0, -1, :]
+                else:
+                    outputs = self.model(context)
+                    logits = outputs.logits[0, -1, :]
                 
                 # Get probabilities and sort by likelihood
                 probs = torch.softmax(logits, dim=-1)
@@ -114,8 +121,15 @@ class LLMRanker:
                     context = torch.tensor([context_tokens], dtype=torch.long).to(self.device)
                 
                 # Get model predictions for next token
-                outputs = self.model(context)
-                logits = outputs.logits[0, -1, :] if context.shape[1] > 0 else outputs.logits[0, 0, :]
+                if context.shape[1] == 0:
+                    # For empty context, we need to use BOS token or handle specially
+                    # Use a single BOS token as minimal context
+                    bos_context = torch.tensor([[self.tokenizer.bos_token_id or self.tokenizer.eos_token_id]], dtype=torch.long).to(self.device)
+                    outputs = self.model(bos_context)
+                    logits = outputs.logits[0, -1, :]
+                else:
+                    outputs = self.model(context)
+                    logits = outputs.logits[0, -1, :]
                 
                 # Get probabilities and sort by likelihood
                 probs = torch.softmax(logits, dim=-1)
