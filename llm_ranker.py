@@ -34,9 +34,40 @@ class LLMRanker:
         if self.tokenizer.pad_token is None:
             self.tokenizer.pad_token = self.tokenizer.eos_token
     
+    def _truncate_kv_cache(self, past_key_values):
+        """
+        Truncate KV cache to respect max context length.
+        
+        Args:
+            past_key_values: The past key values from the model
+            
+        Returns:
+            Truncated past_key_values or None if input is None
+        """
+        if past_key_values is None or len(past_key_values) == 0:
+            return past_key_values
+        
+        # Each element in past_key_values is a tuple of (key, value) tensors
+        # The key/value tensors have shape [batch_size, num_heads, seq_len, head_dim]
+        past_seq_len = past_key_values[0][0].shape[2]
+        
+        if past_seq_len >= self.max_context_length:
+            # Truncate past_key_values to respect max context length
+            truncated_past_key_values = []
+            for layer_past in past_key_values:
+                key, value = layer_past
+                # Keep only the last (max_context_length - 1) tokens
+                truncated_key = key[:, :, -(self.max_context_length - 1):, :]
+                truncated_value = value[:, :, -(self.max_context_length - 1):, :]
+                truncated_past_key_values.append((truncated_key, truncated_value))
+            return tuple(truncated_past_key_values)
+        
+        return past_key_values
+    
     def get_token_ranks(self, text: str) -> List[int]:
         """
         Get the rank of each token in the sequence given previous context.
+        Uses KV caching for efficient computation.
         
         Args:
             text: Input text sequence
@@ -51,27 +82,26 @@ class LLMRanker:
             return []
         
         ranks = []
+        past_key_values = None
         
         with torch.no_grad():
             for i in range(tokens.shape[1]):  # Start from 0 to include first token
                 if i == 0:
-                    # For first token, use empty context (beginning of sequence)
-                    context = torch.empty((1, 0), dtype=torch.long).to(self.device)
-                else:
-                    # Get context up to current position (respecting max context length)
-                    start_idx = max(0, i - self.max_context_length)
-                    context = tokens[:, start_idx:i]
-                
-                # Get model predictions for next token
-                if context.shape[1] == 0:
-                    # For empty context, we need to use BOS token or handle specially
-                    # Use a single BOS token as minimal context
+                    # For first token, use BOS token as context
                     bos_context = torch.tensor([[self.tokenizer.bos_token_id or self.tokenizer.eos_token_id]], dtype=torch.long).to(self.device)
-                    outputs = self.model(bos_context)
+                    outputs = self.model(bos_context, use_cache=True)
                     logits = outputs.logits[0, -1, :]
+                    past_key_values = outputs.past_key_values
                 else:
-                    outputs = self.model(context)
+                    # Use single new token with cached past_key_values
+                    new_token = tokens[:, i-1:i]  # Previous token (what we're predicting next from)
+                    
+                    # Truncate KV cache if needed to respect context length limits
+                    past_key_values = self._truncate_kv_cache(past_key_values)
+                    
+                    outputs = self.model(new_token, past_key_values=past_key_values, use_cache=True)
                     logits = outputs.logits[0, -1, :]
+                    past_key_values = outputs.past_key_values
                 
                 # Get probabilities and sort by likelihood
                 probs = torch.softmax(logits, dim=-1)
@@ -95,6 +125,7 @@ class LLMRanker:
     def get_string_from_token_ranks(self, ranks: List[int], max_length: Optional[int] = None) -> str:
         """
         Generate a string by selecting tokens based on their ranks.
+        Uses KV caching for efficient computation.
         
         Args:
             ranks: List of ranks (1-indexed) for each position
@@ -108,28 +139,26 @@ class LLMRanker:
         
         max_length = max_length or len(ranks)
         tokens = []
+        past_key_values = None
         
         with torch.no_grad():
             for i in range(min(len(ranks), max_length)):
                 if i == 0:
-                    # For first token, use empty context (beginning of sequence)
-                    context = torch.empty((1, 0), dtype=torch.long).to(self.device)
-                else:
-                    # Get context up to current position (respecting max context length)
-                    start_idx = max(0, len(tokens) - self.max_context_length)
-                    context_tokens = tokens[start_idx:]
-                    context = torch.tensor([context_tokens], dtype=torch.long).to(self.device)
-                
-                # Get model predictions for next token
-                if context.shape[1] == 0:
-                    # For empty context, we need to use BOS token or handle specially
-                    # Use a single BOS token as minimal context
+                    # For first token, use BOS token as context
                     bos_context = torch.tensor([[self.tokenizer.bos_token_id or self.tokenizer.eos_token_id]], dtype=torch.long).to(self.device)
-                    outputs = self.model(bos_context)
+                    outputs = self.model(bos_context, use_cache=True)
                     logits = outputs.logits[0, -1, :]
+                    past_key_values = outputs.past_key_values
                 else:
-                    outputs = self.model(context)
+                    # Use single new token with cached past_key_values
+                    new_token = torch.tensor([[tokens[i-1]]], dtype=torch.long).to(self.device)
+                    
+                    # Truncate KV cache if needed to respect context length limits
+                    past_key_values = self._truncate_kv_cache(past_key_values)
+                    
+                    outputs = self.model(new_token, past_key_values=past_key_values, use_cache=True)
                     logits = outputs.logits[0, -1, :]
+                    past_key_values = outputs.past_key_values
                 
                 # Get probabilities and sort by likelihood
                 probs = torch.softmax(logits, dim=-1)
