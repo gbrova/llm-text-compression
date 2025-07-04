@@ -20,22 +20,28 @@ def main():
     # Run benchmarks on different text samples
     print("\n📊 Running compression benchmarks...")
     
-    # Test 1: Simple repeated text (should compress very well)
-    print("\n1. Testing with repeated text pattern:")
-    repeated_text = "The quick brown fox jumps over the lazy dog. " * 20
-    results = pipeline.run_compression_benchmark(repeated_text)
-    pipeline.print_comparison_table(results)
-    
-    # Test 2: Load and test a real dataset if available
+    # Test 1: Load and test bbc-yachts.txt with 3k characters
     if dataset_files:
-        print(f"\n2. Testing with real dataset: {dataset_files[0].name}")
+        print(f"\n1. Testing with real dataset: bbc-yachts.txt (3k characters)")
         try:
-            dataset_text = load_dataset_file(dataset_files[0].name)
-            # Use first 1000 characters for faster testing
-            sample_text = dataset_text[:1000]
-            print(f"   Using first 1000 characters ({len(sample_text)} chars)")
+            dataset_text = load_dataset_file("bbc-yachts.txt")
+            # Use first 3000 characters
+            sample_text = dataset_text[:3000]
+            print(f"   Using first 3000 characters ({len(sample_text)} chars)")
             
             results = pipeline.run_compression_benchmark(sample_text)
+            pipeline.print_comparison_table(results)
+        except Exception as e:
+            print(f"   Error loading dataset: {e}")
+            
+        # Test 2: Same dataset with max context length of 300
+        print(f"\n2. Testing with bbc-yachts.txt (3k characters, max context length 300)")
+        try:
+            dataset_text = load_dataset_file("bbc-yachts.txt")
+            sample_text = dataset_text[:3000]
+            print(f"   Using first 3000 characters ({len(sample_text)} chars), max context length 300")
+            
+            results = pipeline.run_compression_benchmark(sample_text, max_context_length=300)
             pipeline.print_comparison_table(results)
         except Exception as e:
             print(f"   Error loading dataset: {e}")

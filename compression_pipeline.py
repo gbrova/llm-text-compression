@@ -327,13 +327,13 @@ class CompressionPipeline:
             print("No successful compression results to display.")
             return
         
-        print("\n" + "="*80)
+        print("\n" + "="*100)
         print("COMPRESSION COMPARISON RESULTS")
-        print("="*80)
+        print("="*100)
         
         # Table header
-        print(f"{'Method':<20} {'Original':<10} {'Compressed':<10} {'Ratio':<8} {'Reduction':<10} {'Time (s)':<10}")
-        print("-" * 80)
+        print(f"{'Method':<20} {'Original':<10} {'Compressed':<10} {'Ratio':<8} {'Reduction':<10} {'Comp (s)':<10} {'Decomp (s)':<10}")
+        print("-" * 100)
         
         # Sort by compression ratio (best first)
         sorted_results = sorted(
@@ -344,16 +344,16 @@ class CompressionPipeline:
         for method, result in sorted_results:
             print(f"{method:<20} {result.original_size:<10} {result.compressed_size:<10} "
                   f"{result.compression_ratio:<8.3f} {result.compression_percentage:<9.1f}% "
-                  f"{result.compression_time:<10.3f}")
+                  f"{result.compression_time:<10.3f} {result.decompression_time:<10.3f}")
         
-        print("-" * 80)
+        print("-" * 100)
         
         # Show best performing method
         if sorted_results:
             best_method, best_result = sorted_results[0]
             print(f"Best compression: {best_method} ({best_result.compression_percentage:.1f}% reduction)")
         
-        print("="*80)
+        print("="*100)
 
 
 def load_dataset_file(filename: str) -> str:
