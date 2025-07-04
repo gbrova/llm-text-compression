@@ -150,7 +150,7 @@ class TestLLMRanker:
         
         # Test with 10 tokens (should create chunks of size 4, 3, 3)
         tokens = torch.tensor([[1, 2, 3, 4, 5, 6, 7, 8, 9, 10]])
-        chunks = ranker._create_token_chunks(tokens, 3)
+        chunks = ranker._create_chunks(tokens, 3)
         
         assert len(chunks) == 3
         assert chunks[0].shape[1] == 4  # First chunk gets 4 tokens
@@ -167,18 +167,17 @@ class TestLLMRanker:
         
         # Test with 10 ranks (should create chunks of size 4, 3, 3)
         ranks = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
-        chunks = ranker._create_rank_chunks(ranks, 3)
+        ranks_tensor = torch.tensor([ranks], dtype=torch.long)  # Convert to tensor format
+        chunks = ranker._create_chunks(ranks_tensor, 3)
         
         assert len(chunks) == 3
-        assert len(chunks[0]) == 4  # First chunk gets 4 ranks
-        assert len(chunks[1]) == 3  # Second chunk gets 3 ranks
-        assert len(chunks[2]) == 3  # Third chunk gets 3 ranks
+        assert chunks[0].shape[1] == 4  # First chunk gets 4 ranks
+        assert chunks[1].shape[1] == 3  # Second chunk gets 3 ranks
+        assert chunks[2].shape[1] == 3  # Third chunk gets 3 ranks
         
         # Verify all ranks are preserved
-        all_ranks = []
-        for chunk in chunks:
-            all_ranks.extend(chunk)
-        assert all_ranks == ranks
+        all_chunks_tensor = torch.cat(chunks, dim=1)
+        assert torch.equal(all_chunks_tensor, ranks_tensor)
     
     def test_empty_input_batched(self):
         """Test empty input with batching."""
