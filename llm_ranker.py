@@ -122,6 +122,22 @@ class LLMRanker:
         """Get the maximum context length being used."""
         return self.max_context_length
     
+    def get_cache_signature(self) -> tuple:
+        """
+        Get a signature tuple that uniquely identifies this ranker configuration.
+        
+        This signature should include all parameters that affect the ranker's behavior
+        and would make caching results from different configurations invalid.
+        
+        Returns:
+            Tuple containing all parameters that affect ranker behavior
+        """
+        return (
+            self.model_name,
+            self.max_context_length,
+            self.device  # Include device as it might affect numerical precision
+        )
+    
     def get_string_from_token_ranks(self, ranks: List[int], max_length: Optional[int] = None) -> str:
         """
         Generate a string by selecting tokens based on their ranks.
