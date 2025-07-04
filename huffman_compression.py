@@ -7,6 +7,7 @@ including both basic frequency table approach and parametric Zipf distribution a
 
 import pickle
 import time
+import struct
 from typing import List, Dict, Tuple
 from collections import Counter
 import numpy as np
@@ -142,6 +143,60 @@ class HuffmanRankCompressor:
         
         return compressed_data
     
+    def compress_zipf_bytes(self, ranks: List[int]) -> bytes:
+        """Compress ranks using Zipf distribution with efficient byte storage.
+        
+        Args:
+            ranks: List of token ranks
+            
+        Returns:
+            Compressed data as bytes (binary format, not pickle)
+        """
+        # Fit Zipf distribution and create parametric Huffman codec
+        rank_counts = Counter(ranks)
+        s_param, max_rank = self._fit_zipf_distribution(rank_counts)
+        
+        # Generate frequencies based on fitted Zipf distribution
+        zipf_frequencies = self._generate_zipf_frequencies(s_param, max_rank, len(ranks))
+        
+        # Build Huffman codec from parametric distribution
+        codec = HuffmanCodec.from_frequencies(zipf_frequencies)
+        
+        # Compress ranks
+        compressed_ranks = codec.encode(ranks)
+        
+        # Store parameters as binary data (12 bytes total):
+        # - zipf_s as float32 (4 bytes)
+        # - max_rank as uint32 (4 bytes) 
+        # - total_count as uint32 (4 bytes)
+        # - compressed_ranks as remaining bytes
+        header = struct.pack('!fII', float(s_param), int(max_rank), len(ranks))
+        compressed_data = header + compressed_ranks
+        
+        return compressed_data
+    
+    def decompress_zipf_bytes(self, compressed_data: bytes) -> List[int]:
+        """Decompress ranks from byte-format Zipf compressed data.
+        
+        Args:
+            compressed_data: Compressed data as bytes (binary format)
+            
+        Returns:
+            List of decompressed token ranks
+        """
+        # Extract parameters from header (12 bytes)
+        header_size = 12
+        s_param, max_rank, total_count = struct.unpack('!fII', compressed_data[:header_size])
+        compressed_ranks = compressed_data[header_size:]
+        
+        # Reconstruct codec from parameters
+        zipf_frequencies = self._generate_zipf_frequencies(s_param, max_rank, total_count)
+        codec = HuffmanCodec.from_frequencies(zipf_frequencies)
+        
+        # Decompress ranks
+        decompressed_ranks = codec.decode(compressed_ranks)
+        return decompressed_ranks
+    
     def decompress_zipf(self, compressed_data: bytes) -> List[int]:
         """Decompress ranks from Zipf parametric Huffman compressed data.
         
@@ -171,7 +226,7 @@ class HuffmanRankCompressor:
         
         Args:
             ranks: List of token ranks
-            method: Compression method ('basic' or 'zipf')
+            method: Compression method ('basic', 'zipf', or 'zipf_bytes')
             
         Returns:
             Tuple of (compressed_data, compression_time)
@@ -182,6 +237,8 @@ class HuffmanRankCompressor:
             compressed_data = self.compress_basic(ranks)
         elif method == 'zipf':
             compressed_data = self.compress_zipf(ranks)
+        elif method == 'zipf_bytes':
+            compressed_data = self.compress_zipf_bytes(ranks)
         else:
             raise ValueError(f"Unknown method: {method}")
         
@@ -193,7 +250,7 @@ class HuffmanRankCompressor:
         
         Args:
             compressed_data: Compressed data as bytes
-            method: Compression method ('basic' or 'zipf')
+            method: Compression method ('basic', 'zipf', or 'zipf_bytes')
             
         Returns:
             Tuple of (decompressed_ranks, decompression_time)
@@ -204,6 +261,8 @@ class HuffmanRankCompressor:
             decompressed_ranks = self.decompress_basic(compressed_data)
         elif method == 'zipf':
             decompressed_ranks = self.decompress_zipf(compressed_data)
+        elif method == 'zipf_bytes':
+            decompressed_ranks = self.decompress_zipf_bytes(compressed_data)
         else:
             raise ValueError(f"Unknown method: {method}")
         

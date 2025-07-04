@@ -250,6 +250,54 @@ class CompressionPipeline:
         
         return compressed_data, result
     
+    def compress_with_llm_ranks_huffman_zipf_bytes(
+        self, 
+        text: str, 
+        model_name: str = "gpt2",
+        max_context_length: Optional[int] = None
+    ) -> Tuple[bytes, CompressionResult]:
+        """Compress text using LLM rank encoding + Huffman coding with Zipf distribution (byte format).
+        
+        Args:
+            text: Input text to compress
+            model_name: LLM model to use for ranking
+            max_context_length: Maximum context length for LLM
+            
+        Returns:
+            Tuple of (compressed_data, compression_result)
+        """
+        ranker = self._get_ranker(model_name, max_context_length)
+        
+        # Phase 1: Get token ranks (with caching)
+        ranks = self.get_token_ranks_cached(text, ranker)
+        
+        # Phase 2: Compress ranks with Zipf-based Huffman coding (byte format)
+        compressed_data, compression_time = self.huffman_compressor.compress_ranks_with_timing(ranks, 'zipf_bytes')
+        
+        # Phase 3: Test decompression and verify round-trip accuracy
+        decompressed_ranks, decompression_time = self.huffman_compressor.decompress_ranks_with_timing(compressed_data, 'zipf_bytes')
+        reconstructed_text = self.get_string_from_token_ranks_cached(decompressed_ranks, ranker)
+        
+        if reconstructed_text != text:
+            raise ValueError("Round-trip compression failed - reconstructed text doesn't match original")
+        
+        original_size = len(text.encode('utf-8'))
+        compressed_size = len(compressed_data)
+        
+        result = CompressionResult(
+            method="llm_ranks_huffman_zipf_bytes",
+            original_size=original_size,
+            compressed_size=compressed_size,
+            compression_ratio=compressed_size / original_size,
+            compression_time=compression_time,
+            decompression_time=decompression_time,
+            model_name=model_name,
+            context_length=max_context_length,
+            text_sample=text[:100]
+        )
+        
+        return compressed_data, result
+    
     def compress_with_raw_zlib(self, text: str) -> Tuple[bytes, CompressionResult]:
         """Baseline: compress raw text with zlib.
         
@@ -379,6 +427,14 @@ class CompressionPipeline:
         except Exception as e:
             print(f"LLM ranks Huffman Zipf compression failed: {e}")
             results["llm_ranks_huffman_zipf"] = None
+        
+        try:
+            _, results["llm_ranks_huffman_zipf_bytes"] = self.compress_with_llm_ranks_huffman_zipf_bytes(
+                text, model_name, max_context_length
+            )
+        except Exception as e:
+            print(f"LLM ranks Huffman Zipf bytes compression failed: {e}")
+            results["llm_ranks_huffman_zipf_bytes"] = None
         
         try:
             _, results["raw_zlib"] = self.compress_with_raw_zlib(text)
