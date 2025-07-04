@@ -73,14 +73,16 @@ class CompressionPipeline:
         conn.commit()
         conn.close()
     
-    def _get_ranker(self, model_name: str = "gpt2", max_context_length: Optional[int] = None) -> LLMRanker:
+    def _get_ranker(self, model_name: str = "gpt2", max_context_length: Optional[int] = None, batch_size: int = 1) -> LLMRanker:
         """Get or create LLM ranker instance."""
         if (self.ranker is None or 
             self.ranker.model_name != model_name or 
-            self.ranker.max_context_length != max_context_length):
+            self.ranker.max_context_length != max_context_length or
+            self.ranker.batch_size != batch_size):
             self.ranker = LLMRanker(
                 model_name=model_name,
-                max_context_length=max_context_length
+                max_context_length=max_context_length,
+                batch_size=batch_size
             )
         return self.ranker
     
@@ -190,6 +192,62 @@ class CompressionPipeline:
         
         result = CompressionResult(
             method="llm_ranks_huffman",
+            original_size=original_size,
+            compressed_size=compressed_size,
+            compression_ratio=compressed_size / original_size,
+            compression_time=compression_time,
+            decompression_time=decompression_time,
+            model_name=model_name,
+            context_length=max_context_length,
+            text_sample=text[:100]
+        )
+        
+        return compressed_data, result
+    
+    def compress_with_llm_ranks_batched(
+        self, 
+        text: str, 
+        model_name: str = "gpt2",
+        max_context_length: Optional[int] = None,
+        batch_size: int = 4
+    ) -> Tuple[bytes, CompressionResult]:
+        """Compress text using LLM rank encoding + zlib with batched processing.
+        
+        Args:
+            text: Input text to compress
+            model_name: LLM model to use for ranking
+            max_context_length: Maximum context length for LLM
+            batch_size: Number of parallel batches to process
+            
+        Returns:
+            Tuple of (compressed_data, compression_result)
+        """
+        ranker = self._get_ranker(model_name, max_context_length, batch_size)
+        
+        # Phase 1: Get token ranks with batching
+        start_time = time.time()
+        ranks = ranker.get_token_ranks(text)
+        
+        # Phase 2: Compress ranks with zlib
+        ranks_bytes = pickle.dumps(ranks)
+        compressed_data = zlib.compress(ranks_bytes)
+        compression_time = time.time() - start_time
+        
+        # Test decompression
+        start_time = time.time()
+        decompressed_ranks = pickle.loads(zlib.decompress(compressed_data))
+        reconstructed_text = ranker.get_string_from_token_ranks(decompressed_ranks)
+        decompression_time = time.time() - start_time
+        
+        # Verify round-trip accuracy
+        if reconstructed_text != text:
+            raise ValueError("Round-trip compression failed - reconstructed text doesn't match original")
+        
+        original_size = len(text.encode('utf-8'))
+        compressed_size = len(compressed_data)
+        
+        result = CompressionResult(
+            method=f"llm_ranks_zlib_batch{batch_size}",
             original_size=original_size,
             compressed_size=compressed_size,
             compression_ratio=compressed_size / original_size,
@@ -388,7 +446,8 @@ class CompressionPipeline:
         text: str, 
         model_name: str = "gpt2",
         max_context_length: Optional[int] = None,
-        save_to_db: bool = True
+        save_to_db: bool = True,
+        batch_size: int = 4
     ) -> Dict[str, CompressionResult]:
         """Run all compression methods on text and return results.
         
@@ -397,6 +456,7 @@ class CompressionPipeline:
             model_name: LLM model to use
             max_context_length: Maximum context length for LLM
             save_to_db: Whether to save results to database
+            batch_size: Number of parallel batches to process for batched method
             
         Returns:
             Dictionary mapping method names to results
@@ -435,6 +495,14 @@ class CompressionPipeline:
         except Exception as e:
             print(f"LLM ranks Huffman Zipf bytes compression failed: {e}")
             results["llm_ranks_huffman_zipf_bytes"] = None
+        
+        try:
+            _, results[f"llm_ranks_zlib_batch{batch_size}"] = self.compress_with_llm_ranks_batched(
+                text, model_name, max_context_length, batch_size
+            )
+        except Exception as e:
+            print(f"LLM ranks batched compression failed: {e}")
+            results[f"llm_ranks_zlib_batch{batch_size}"] = None
         
         try:
             _, results["raw_zlib"] = self.compress_with_raw_zlib(text)
