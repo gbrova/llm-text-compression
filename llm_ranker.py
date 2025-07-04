@@ -1,5 +1,6 @@
 import torch
 from transformers import GPT2LMHeadModel, GPT2Tokenizer
+from transformers.cache_utils import DynamicCache
 from typing import List, Optional
 from enum import Enum
 
@@ -44,35 +45,56 @@ class LLMRanker:
         if self.tokenizer.pad_token is None:
             self.tokenizer.pad_token = self.tokenizer.eos_token
     
+    def _truncate_kv_cache_helper(self, past_key_values):
+        """
+        Helper method to truncate KV cache to respect max context length.
+        
+        Args:
+            past_key_values: The past key values from the model (DynamicCache object or tuple)
+            
+        Returns:
+            Truncated past_key_values or None if input is None
+        """
+        if past_key_values is None:
+            return past_key_values
+        
+        # Convert legacy tuple format to DynamicCache if needed
+        if isinstance(past_key_values, tuple):
+            past_key_values = DynamicCache.from_legacy_cache(past_key_values)
+        
+        # Check if we need to truncate based on sequence length
+        if len(past_key_values.key_cache) > 0:
+            past_seq_len = past_key_values.key_cache[0].shape[2]
+            
+            if past_seq_len >= self.max_context_length:
+                # Create new DynamicCache with truncated values
+                truncated_cache = DynamicCache()
+                
+                for layer_idx in range(len(past_key_values.key_cache)):
+                    key = past_key_values.key_cache[layer_idx]
+                    value = past_key_values.value_cache[layer_idx]
+                    
+                    # Keep only the last (max_context_length - 1) tokens
+                    truncated_key = key[:, :, -(self.max_context_length - 1):, :]
+                    truncated_value = value[:, :, -(self.max_context_length - 1):, :]
+                    
+                    truncated_cache.update(truncated_key, truncated_value, layer_idx)
+                
+                return truncated_cache
+        
+        return past_key_values
+    
     def _truncate_kv_cache(self, past_key_values):
         """
         Truncate KV cache to respect max context length.
         
         Args:
-            past_key_values: The past key values from the model
+            past_key_values: The past key values from the model (DynamicCache object)
             
         Returns:
             Truncated past_key_values or None if input is None
         """
-        if past_key_values is None or len(past_key_values) == 0:
-            return past_key_values
-        
-        # Each element in past_key_values is a tuple of (key, value) tensors
-        # The key/value tensors have shape [batch_size, num_heads, seq_len, head_dim]
-        past_seq_len = past_key_values[0][0].shape[2]
-        
-        if past_seq_len >= self.max_context_length:
-            # Truncate past_key_values to respect max context length
-            truncated_past_key_values = []
-            for layer_past in past_key_values:
-                key, value = layer_past
-                # Keep only the last (max_context_length - 1) tokens
-                truncated_key = key[:, :, -(self.max_context_length - 1):, :]
-                truncated_value = value[:, :, -(self.max_context_length - 1):, :]
-                truncated_past_key_values.append((truncated_key, truncated_value))
-            return tuple(truncated_past_key_values)
-        
-        return past_key_values
+        return self._truncate_kv_cache_helper(past_key_values)
     
     def get_token_ranks(self, text: str) -> List[int]:
         """
@@ -325,30 +347,12 @@ class LLMRanker:
         Truncate KV cache for batched processing.
         
         Args:
-            past_key_values: The past key values from the model
+            past_key_values: The past key values from the model (DynamicCache object)
             
         Returns:
             Truncated past_key_values or None if input is None
         """
-        if past_key_values is None or len(past_key_values) == 0:
-            return past_key_values
-        
-        # Each element in past_key_values is a tuple of (key, value) tensors
-        # The key/value tensors have shape [batch_size, num_heads, seq_len, head_dim]
-        past_seq_len = past_key_values[0][0].shape[2]
-        
-        if past_seq_len >= self.max_context_length:
-            # Truncate past_key_values to respect max context length
-            truncated_past_key_values = []
-            for layer_past in past_key_values:
-                key, value = layer_past
-                # Keep only the last (max_context_length - 1) tokens
-                truncated_key = key[:, :, -(self.max_context_length - 1):, :]
-                truncated_value = value[:, :, -(self.max_context_length - 1):, :]
-                truncated_past_key_values.append((truncated_key, truncated_value))
-            return tuple(truncated_past_key_values)
-        
-        return past_key_values
+        return self._truncate_kv_cache_helper(past_key_values)
     
     def get_vocab_size(self) -> int:
         """Get the vocabulary size of the model."""
