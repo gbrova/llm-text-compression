@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import List, Tuple, Dict, Any, Optional
 from dataclasses import dataclass, asdict
 from llm_ranker import LLMRanker
+from ranker_cache import RankerCache
 
 
 @dataclass
@@ -39,6 +40,7 @@ class CompressionPipeline:
         """
         self.db_path = db_path
         self.ranker: Optional[LLMRanker] = None
+        self.cache = RankerCache(db_path)
         self._setup_database()
     
     def _setup_database(self):
@@ -46,6 +48,7 @@ class CompressionPipeline:
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
         
+        # Create compression results table
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS compression_results (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -77,6 +80,14 @@ class CompressionPipeline:
             )
         return self.ranker
     
+    def get_token_ranks_cached(self, text: str, ranker: LLMRanker) -> List[int]:
+        """Get token ranks with caching."""
+        return self.cache.get_token_ranks_cached(text, ranker)
+    
+    def get_string_from_token_ranks_cached(self, ranks: List[int], ranker: LLMRanker) -> str:
+        """Get string from token ranks with caching."""
+        return self.cache.get_string_from_token_ranks_cached(ranks, ranker)
+    
     def compress_with_llm_ranks(
         self, 
         text: str, 
@@ -95,9 +106,9 @@ class CompressionPipeline:
         """
         ranker = self._get_ranker(model_name, max_context_length)
         
-        # Phase 1: Get token ranks
+        # Phase 1: Get token ranks (with caching)
         start_time = time.time()
-        ranks = ranker.get_token_ranks(text)
+        ranks = self.get_token_ranks_cached(text, ranker)
         
         # Phase 2: Compress ranks with zlib
         ranks_bytes = pickle.dumps(ranks)
@@ -107,7 +118,7 @@ class CompressionPipeline:
         # Test decompression
         start_time = time.time()
         decompressed_ranks = pickle.loads(zlib.decompress(compressed_data))
-        reconstructed_text = ranker.get_string_from_token_ranks(decompressed_ranks)
+        reconstructed_text = self.get_string_from_token_ranks_cached(decompressed_ranks, ranker)
         decompression_time = time.time() - start_time
         
         # Verify round-trip accuracy
