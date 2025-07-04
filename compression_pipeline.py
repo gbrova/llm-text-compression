@@ -32,15 +32,17 @@ class CompressionResult:
 class CompressionPipeline:
     """Main compression pipeline with database storage for results."""
     
-    def __init__(self, db_path: str = "compression_results.db"):
+    def __init__(self, db_path: str = "compression_results.db", enable_cache: bool = False):
         """Initialize the compression pipeline.
         
         Args:
             db_path: Path to SQLite database for storing results
+            enable_cache: Whether to enable ranker result caching (default: False for interim)
         """
         self.db_path = db_path
+        self.enable_cache = enable_cache
         self.ranker: Optional[LLMRanker] = None
-        self.cache = RankerCache(db_path)
+        self.cache = RankerCache(db_path) if enable_cache else None
         self._setup_database()
     
     def _setup_database(self):
@@ -81,12 +83,20 @@ class CompressionPipeline:
         return self.ranker
     
     def get_token_ranks_cached(self, text: str, ranker: LLMRanker) -> List[int]:
-        """Get token ranks with caching."""
-        return self.cache.get_token_ranks_cached(text, ranker)
+        """Get token ranks with optional caching."""
+        if self.enable_cache and self.cache is not None:
+            return self.cache.get_token_ranks_cached(text, ranker)
+        else:
+            # Direct computation without caching
+            return ranker.get_token_ranks(text)
     
     def get_string_from_token_ranks_cached(self, ranks: List[int], ranker: LLMRanker) -> str:
-        """Get string from token ranks with caching."""
-        return self.cache.get_string_from_token_ranks_cached(ranks, ranker)
+        """Get string from token ranks with optional caching."""
+        if self.enable_cache and self.cache is not None:
+            return self.cache.get_string_from_token_ranks_cached(ranks, ranker)
+        else:
+            # Direct computation without caching
+            return ranker.get_string_from_token_ranks(ranks)
     
     def compress_with_llm_ranks(
         self, 
