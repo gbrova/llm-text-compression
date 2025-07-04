@@ -11,4 +11,5 @@ dependencies = [
     "dahuffman>=0.4.1",
     "scipy>=1.11.0",
     "numpy>=1.24.0",
+    "matplotlib>=3.7.0",
 ]
