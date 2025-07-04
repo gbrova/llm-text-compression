@@ -6,3 +6,6 @@ __pycache__/
 .venv/
 venv/
 .env
+
+# Compression experiment database
+compression_results.db
