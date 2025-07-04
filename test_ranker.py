@@ -1,4 +1,5 @@
 import pytest
+import torch
 from llm_ranker import LLMRanker, rank_tokens
 
 
@@ -102,6 +103,104 @@ class TestLLMRanker:
         
         # Results should be deterministic
         assert ranks1 == ranks2
+    
+    def test_batched_perfect_recovery(self):
+        """Test that batching still achieves perfect recovery."""
+        text = "The quick brown fox jumps over the lazy dog"
+        
+        # Test with different batch sizes
+        for batch_size in [1, 2, 3, 5]:
+            ranker = LLMRanker(batch_size=batch_size)
+            ranks = ranker.get_token_ranks(text)
+            reconstructed = ranker.get_string_from_token_ranks(ranks)
+            
+            # Should achieve perfect recovery regardless of batch size
+            assert reconstructed == text, f"Perfect recovery failed with batch_size={batch_size}"
+    
+    def test_batch_size_consistency(self):
+        """Test that batching produces consistent results within each batch."""
+        text = "The quick brown fox jumps over the lazy dog"
+        
+        # When processing in batches, each batch should be internally consistent
+        # but different batch sizes will produce different results due to context reset
+        ranker = LLMRanker(batch_size=2)
+        ranks = ranker.get_token_ranks(text)
+        
+        # Should produce valid ranks
+        assert isinstance(ranks, list)
+        assert len(ranks) > 0
+        assert all(isinstance(rank, int) for rank in ranks)
+        assert all(rank >= 1 for rank in ranks)
+    
+    def test_batching_with_uneven_division(self):
+        """Test that batching works correctly when tokens don't divide evenly."""
+        # Use a text that generates 10 tokens when n=3 (like the example in the requirements)
+        text = "one two three four five six seven eight nine ten"
+        
+        ranker = LLMRanker(batch_size=3)
+        ranks = ranker.get_token_ranks(text)
+        reconstructed = ranker.get_string_from_token_ranks(ranks)
+        
+        # Should achieve perfect recovery even with uneven division
+        assert reconstructed == text
+    
+    def test_token_chunk_creation_logic(self):
+        """Test the token chunk creation logic with specific scenarios."""
+        ranker = LLMRanker(batch_size=3)
+        
+        # Test with 10 tokens (should create chunks of size 4, 3, 3)
+        tokens = torch.tensor([[1, 2, 3, 4, 5, 6, 7, 8, 9, 10]])
+        chunks = ranker._create_token_chunks(tokens, 3)
+        
+        assert len(chunks) == 3
+        assert chunks[0].shape[1] == 4  # First chunk gets 4 tokens
+        assert chunks[1].shape[1] == 3  # Second chunk gets 3 tokens
+        assert chunks[2].shape[1] == 3  # Third chunk gets 3 tokens
+        
+        # Verify all tokens are preserved
+        all_tokens = torch.cat(chunks, dim=1)
+        assert torch.equal(all_tokens, tokens)
+    
+    def test_rank_chunk_creation_logic(self):
+        """Test the rank chunk creation logic with specific scenarios."""
+        ranker = LLMRanker(batch_size=3)
+        
+        # Test with 10 ranks (should create chunks of size 4, 3, 3)
+        ranks = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+        chunks = ranker._create_rank_chunks(ranks, 3)
+        
+        assert len(chunks) == 3
+        assert len(chunks[0]) == 4  # First chunk gets 4 ranks
+        assert len(chunks[1]) == 3  # Second chunk gets 3 ranks
+        assert len(chunks[2]) == 3  # Third chunk gets 3 ranks
+        
+        # Verify all ranks are preserved
+        all_ranks = []
+        for chunk in chunks:
+            all_ranks.extend(chunk)
+        assert all_ranks == ranks
+    
+    def test_empty_input_batched(self):
+        """Test empty input with batching."""
+        ranker = LLMRanker(batch_size=3)
+        
+        # Test empty text
+        ranks = ranker.get_token_ranks("")
+        assert ranks == []
+        
+        # Test empty ranks
+        result = ranker.get_string_from_token_ranks([])
+        assert result == ""
+    
+    def test_single_token_batched(self):
+        """Test single token with batching."""
+        ranker = LLMRanker(batch_size=3)
+        
+        text = "Hello"
+        ranks = ranker.get_token_ranks(text)
+        reconstructed = ranker.get_string_from_token_ranks(ranks)
+        
+        assert reconstructed == text
 
 
 if __name__ == "__main__":
