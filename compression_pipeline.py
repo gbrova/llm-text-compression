@@ -102,6 +102,47 @@ class CompressionPipeline:
             # Direct computation without caching
             return ranker.get_string_from_token_ranks(ranks)
     
+    def _create_compression_result(
+        self, 
+        original_text: str, 
+        compressed_data: bytes, 
+        compression_time: float, 
+        decompression_time: float,
+        method_name: str,
+        model_name: Optional[str] = None,
+        context_length: Optional[int] = None
+    ) -> CompressionResult:
+        """Create a CompressionResult with consistent calculations."""
+        original_size = len(original_text.encode('utf-8'))
+        compressed_size = len(compressed_data)
+        
+        return CompressionResult(
+            method=method_name,
+            original_size=original_size,
+            compressed_size=compressed_size,
+            compression_ratio=compressed_size / original_size,
+            compression_time=compression_time,
+            decompression_time=decompression_time,
+            model_name=model_name,
+            context_length=context_length,
+            text_sample=original_text[:100]
+        )
+    
+    def _run_compression_method_safely(
+        self, 
+        method_func: callable, 
+        method_name: str, 
+        *args, 
+        **kwargs
+    ) -> Optional[CompressionResult]:
+        """Safely run a compression method with error handling."""
+        try:
+            _, result = method_func(*args, **kwargs)
+            return result
+        except Exception as e:
+            print(f"{method_name} compression failed: {e}")
+            return None
+    
     def compress_with_llm_ranks(
         self, 
         text: str, 
@@ -139,19 +180,9 @@ class CompressionPipeline:
         if reconstructed_text != text:
             raise ValueError("Round-trip compression failed - reconstructed text doesn't match original")
         
-        original_size = len(text.encode('utf-8'))
-        compressed_size = len(compressed_data)
-        
-        result = CompressionResult(
-            method="llm_ranks_zlib",
-            original_size=original_size,
-            compressed_size=compressed_size,
-            compression_ratio=compressed_size / original_size,
-            compression_time=compression_time,
-            decompression_time=decompression_time,
-            model_name=model_name,
-            context_length=max_context_length,
-            text_sample=text[:100]
+        result = self._create_compression_result(
+            text, compressed_data, compression_time, decompression_time,
+            "llm_ranks_zlib", model_name, max_context_length
         )
         
         return compressed_data, result
@@ -187,19 +218,9 @@ class CompressionPipeline:
         if reconstructed_text != text:
             raise ValueError("Round-trip compression failed - reconstructed text doesn't match original")
         
-        original_size = len(text.encode('utf-8'))
-        compressed_size = len(compressed_data)
-        
-        result = CompressionResult(
-            method="llm_ranks_huffman",
-            original_size=original_size,
-            compressed_size=compressed_size,
-            compression_ratio=compressed_size / original_size,
-            compression_time=compression_time,
-            decompression_time=decompression_time,
-            model_name=model_name,
-            context_length=max_context_length,
-            text_sample=text[:100]
+        result = self._create_compression_result(
+            text, compressed_data, compression_time, decompression_time,
+            "llm_ranks_huffman", model_name, max_context_length
         )
         
         return compressed_data, result
@@ -243,19 +264,9 @@ class CompressionPipeline:
         if reconstructed_text != text:
             raise ValueError("Round-trip compression failed - reconstructed text doesn't match original")
         
-        original_size = len(text.encode('utf-8'))
-        compressed_size = len(compressed_data)
-        
-        result = CompressionResult(
-            method=f"llm_ranks_zlib_batch{batch_size}",
-            original_size=original_size,
-            compressed_size=compressed_size,
-            compression_ratio=compressed_size / original_size,
-            compression_time=compression_time,
-            decompression_time=decompression_time,
-            model_name=model_name,
-            context_length=max_context_length,
-            text_sample=text[:100]
+        result = self._create_compression_result(
+            text, compressed_data, compression_time, decompression_time,
+            f"llm_ranks_zlib_batch{batch_size}", model_name, max_context_length
         )
         
         return compressed_data, result
@@ -291,19 +302,9 @@ class CompressionPipeline:
         if reconstructed_text != text:
             raise ValueError("Round-trip compression failed - reconstructed text doesn't match original")
         
-        original_size = len(text.encode('utf-8'))
-        compressed_size = len(compressed_data)
-        
-        result = CompressionResult(
-            method="llm_ranks_huffman_zipf",
-            original_size=original_size,
-            compressed_size=compressed_size,
-            compression_ratio=compressed_size / original_size,
-            compression_time=compression_time,
-            decompression_time=decompression_time,
-            model_name=model_name,
-            context_length=max_context_length,
-            text_sample=text[:100]
+        result = self._create_compression_result(
+            text, compressed_data, compression_time, decompression_time,
+            "llm_ranks_huffman_zipf", model_name, max_context_length
         )
         
         return compressed_data, result
@@ -339,19 +340,9 @@ class CompressionPipeline:
         if reconstructed_text != text:
             raise ValueError("Round-trip compression failed - reconstructed text doesn't match original")
         
-        original_size = len(text.encode('utf-8'))
-        compressed_size = len(compressed_data)
-        
-        result = CompressionResult(
-            method="llm_ranks_huffman_zipf_bytes",
-            original_size=original_size,
-            compressed_size=compressed_size,
-            compression_ratio=compressed_size / original_size,
-            compression_time=compression_time,
-            decompression_time=decompression_time,
-            model_name=model_name,
-            context_length=max_context_length,
-            text_sample=text[:100]
+        result = self._create_compression_result(
+            text, compressed_data, compression_time, decompression_time,
+            "llm_ranks_huffman_zipf_bytes", model_name, max_context_length
         )
         
         return compressed_data, result
@@ -381,17 +372,9 @@ class CompressionPipeline:
         if decompressed_data.decode('utf-8') != text:
             raise ValueError("Round-trip compression failed")
         
-        original_size = len(text_bytes)
-        compressed_size = len(compressed_data)
-        
-        result = CompressionResult(
-            method="raw_zlib",
-            original_size=original_size,
-            compressed_size=compressed_size,
-            compression_ratio=compressed_size / original_size,
-            compression_time=compression_time,
-            decompression_time=decompression_time,
-            text_sample=text[:100]
+        result = self._create_compression_result(
+            text, compressed_data, compression_time, decompression_time,
+            "raw_zlib"
         )
         
         return compressed_data, result
@@ -425,18 +408,9 @@ class CompressionPipeline:
         reconstructed_text = ranker.tokenizer.decode(decompressed_tokens, skip_special_tokens=True)
         decompression_time = time.time() - start_time
         
-        original_size = len(text.encode('utf-8'))
-        compressed_size = len(compressed_data)
-        
-        result = CompressionResult(
-            method="tokenizer_zlib",
-            original_size=original_size,
-            compressed_size=compressed_size,
-            compression_ratio=compressed_size / original_size,
-            compression_time=compression_time,
-            decompression_time=decompression_time,
-            model_name=model_name,
-            text_sample=text[:100]
+        result = self._create_compression_result(
+            text, compressed_data, compression_time, decompression_time,
+            "tokenizer_zlib", model_name
         )
         
         return compressed_data, result
@@ -461,60 +435,31 @@ class CompressionPipeline:
         Returns:
             Dictionary mapping method names to results
         """
+        # Define all compression methods with their configurations
+        compression_methods = [
+            (self.compress_with_llm_ranks, "LLM ranks", "llm_ranks_zlib", 
+             (text, model_name, max_context_length)),
+            (self.compress_with_llm_ranks_huffman, "LLM ranks Huffman", "llm_ranks_huffman", 
+             (text, model_name, max_context_length)),
+            (self.compress_with_llm_ranks_huffman_zipf, "LLM ranks Huffman Zipf", "llm_ranks_huffman_zipf", 
+             (text, model_name, max_context_length)),
+            (self.compress_with_llm_ranks_huffman_zipf_bytes, "LLM ranks Huffman Zipf bytes", "llm_ranks_huffman_zipf_bytes", 
+             (text, model_name, max_context_length)),
+            (self.compress_with_llm_ranks_batched, "LLM ranks batched", f"llm_ranks_zlib_batch{batch_size}", 
+             (text, model_name, max_context_length, batch_size)),
+            (self.compress_with_raw_zlib, "Raw zlib", "raw_zlib", 
+             (text,)),
+            (self.compress_with_tokenizer_zlib, "Tokenizer zlib", "tokenizer_zlib", 
+             (text, model_name)),
+        ]
+        
         results = {}
         
-        # Run all compression methods
-        try:
-            _, results["llm_ranks_zlib"] = self.compress_with_llm_ranks(
-                text, model_name, max_context_length
+        # Run all compression methods using the helper method
+        for method_func, method_name, result_key, args in compression_methods:
+            results[result_key] = self._run_compression_method_safely(
+                method_func, method_name, *args
             )
-        except Exception as e:
-            print(f"LLM ranks compression failed: {e}")
-            results["llm_ranks_zlib"] = None
-        
-        try:
-            _, results["llm_ranks_huffman"] = self.compress_with_llm_ranks_huffman(
-                text, model_name, max_context_length
-            )
-        except Exception as e:
-            print(f"LLM ranks Huffman compression failed: {e}")
-            results["llm_ranks_huffman"] = None
-        
-        try:
-            _, results["llm_ranks_huffman_zipf"] = self.compress_with_llm_ranks_huffman_zipf(
-                text, model_name, max_context_length
-            )
-        except Exception as e:
-            print(f"LLM ranks Huffman Zipf compression failed: {e}")
-            results["llm_ranks_huffman_zipf"] = None
-        
-        try:
-            _, results["llm_ranks_huffman_zipf_bytes"] = self.compress_with_llm_ranks_huffman_zipf_bytes(
-                text, model_name, max_context_length
-            )
-        except Exception as e:
-            print(f"LLM ranks Huffman Zipf bytes compression failed: {e}")
-            results["llm_ranks_huffman_zipf_bytes"] = None
-        
-        try:
-            _, results[f"llm_ranks_zlib_batch{batch_size}"] = self.compress_with_llm_ranks_batched(
-                text, model_name, max_context_length, batch_size
-            )
-        except Exception as e:
-            print(f"LLM ranks batched compression failed: {e}")
-            results[f"llm_ranks_zlib_batch{batch_size}"] = None
-        
-        try:
-            _, results["raw_zlib"] = self.compress_with_raw_zlib(text)
-        except Exception as e:
-            print(f"Raw zlib compression failed: {e}")
-            results["raw_zlib"] = None
-        
-        try:
-            _, results["tokenizer_zlib"] = self.compress_with_tokenizer_zlib(text, model_name)
-        except Exception as e:
-            print(f"Tokenizer zlib compression failed: {e}")
-            results["tokenizer_zlib"] = None
         
         # Save to database if requested
         if save_to_db:
