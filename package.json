@@ -1,0 +1,33 @@
+{
+  "name": "llm-text-compression-js",
+  "version": "1.0.0",
+  "description": "JavaScript port of LLM text compression pipeline using transformers.js",
+  "main": "src/index.js",
+  "type": "module",
+  "scripts": {
+    "test": "node --test src/test/*.test.js",
+    "benchmark": "node src/benchmark.js",
+    "start": "node src/index.js",
+    "install-deps": "npm install @huggingface/transformers sqlite3"
+  },
+  "keywords": ["llm", "compression", "text", "transformers", "huffman"],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "@huggingface/transformers": "^3.0.0",
+    "sqlite3": "^5.1.6"
+  },
+  "optionalDependencies": {
+    "huffman-coding": "^1.0.0"
+  },
+  "devDependencies": {},
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "notes": {
+    "setup": "This is a JavaScript port of the Python LLM compression pipeline.",
+    "dependencies": "Some dependencies like huffman-coding may need to be installed separately or implemented.",
+    "transformers": "The @huggingface/transformers.js library is used for LLM inference.",
+    "testing": "Tests are designed to work even when optional dependencies are missing."
+  }
+}
