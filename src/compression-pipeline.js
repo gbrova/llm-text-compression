@@ -6,16 +6,81 @@ import zlib from 'zlib';
 
 // Try to import sqlite3, fall back to mock if not available
 let Database;
+let mockDbData = new Map(); // Global storage for mock database
+
 try {
     const sqlite3 = await import('sqlite3');
     Database = sqlite3.Database;
 } catch (error) {
     // Mock Database class for testing without sqlite3
     Database = class MockDatabase {
-        constructor() {}
-        run() {}
-        get(query, params, callback) { callback(null, null); }
-        all(query, params, callback) { callback(null, []); }
+        constructor(dbPath) {
+            this.dbPath = dbPath;
+            if (!mockDbData.has(dbPath)) {
+                mockDbData.set(dbPath, []);
+            }
+        }
+        
+        getData() {
+            return mockDbData.get(this.dbPath) || [];
+        }
+        
+        run(query, paramsOrCallback, callback) { 
+            // Handle both run(query, callback) and run(query, params, callback)
+            let params = [];
+            if (typeof paramsOrCallback === 'function') {
+                callback = paramsOrCallback;
+            } else if (Array.isArray(paramsOrCallback)) {
+                params = paramsOrCallback;
+            }
+            
+            if (callback) {
+                // For INSERT queries, simulate data storage
+                if (query.includes('INSERT INTO compression_results')) {
+                    const data = this.getData();
+                    const row = {
+                        id: data.length + 1,
+                        timestamp: params[0],
+                        method: params[1],
+                        original_size: params[2],
+                        compressed_size: params[3],
+                        compression_ratio: params[4],
+                        compression_time: params[5],
+                        decompression_time: params[6],
+                        model_name: params[7],
+                        context_length: params[8],
+                        text_sample: params[9],
+                        metadata: params[10]
+                    };
+                    data.push(row);
+                }
+                // Call callback asynchronously to match real database behavior
+                setTimeout(() => callback(null), 0);
+            }
+        }
+        get(query, params, callback) { 
+            if (typeof params === 'function') {
+                callback = params;
+                params = [];
+            }
+            setTimeout(() => callback(null, null), 0); 
+        }
+        all(query, params, callback) { 
+            if (typeof params === 'function') {
+                callback = params;
+                params = [];
+            }
+            
+            const data = this.getData();
+            let results = [...data];
+            
+            // Filter by method if specified
+            if (query.includes('WHERE method = ?') && params.length > 0) {
+                results = results.filter(row => row.method === params[0]);
+            }
+            
+            setTimeout(() => callback(null, results), 0); 
+        }
         close() {}
     };
 }
@@ -74,27 +139,34 @@ export class CompressionPipeline {
      * @private
      */
     _setupDatabase() {
-        const db = new Database(this.dbPath);
-        
-        // Create compression results table
-        db.run(`
-            CREATE TABLE IF NOT EXISTS compression_results (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                timestamp TEXT NOT NULL,
-                method TEXT NOT NULL,
-                original_size INTEGER NOT NULL,
-                compressed_size INTEGER NOT NULL,
-                compression_ratio REAL NOT NULL,
-                compression_time REAL NOT NULL,
-                decompression_time REAL NOT NULL,
-                model_name TEXT,
-                context_length INTEGER,
-                text_sample TEXT,
-                metadata TEXT
-            )
-        `);
-        
-        db.close();
+        return new Promise((resolve, reject) => {
+            const db = new Database(this.dbPath);
+            
+            // Create compression results table
+            db.run(`
+                CREATE TABLE IF NOT EXISTS compression_results (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    timestamp TEXT NOT NULL,
+                    method TEXT NOT NULL,
+                    original_size INTEGER NOT NULL,
+                    compressed_size INTEGER NOT NULL,
+                    compression_ratio REAL NOT NULL,
+                    compression_time REAL NOT NULL,
+                    decompression_time REAL NOT NULL,
+                    model_name TEXT,
+                    context_length INTEGER,
+                    text_sample TEXT,
+                    metadata TEXT
+                )
+            `, (err) => {
+                db.close();
+                if (err) {
+                    reject(err);
+                } else {
+                    resolve();
+                }
+            });
+        });
     }
 
     /**

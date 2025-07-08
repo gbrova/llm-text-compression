@@ -10,17 +10,22 @@
     "start": "node src/index.js",
     "install-deps": "npm install @huggingface/transformers sqlite3"
   },
-  "keywords": ["llm", "compression", "text", "transformers", "huffman"],
+  "keywords": [
+    "llm",
+    "compression",
+    "text",
+    "transformers",
+    "huffman"
+  ],
   "author": "",
   "license": "MIT",
   "dependencies": {
-    "@huggingface/transformers": "^3.0.0",
-    "sqlite3": "^5.1.6"
+    "@huggingface/transformers": "^3.6.1",
+    "sqlite3": "^5.1.7"
   },
   "optionalDependencies": {
     "huffman-coding": "^1.0.0"
   },
-  "devDependencies": {},
   "engines": {
     "node": ">=18.0.0"
   },

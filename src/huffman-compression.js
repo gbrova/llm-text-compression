@@ -5,12 +5,30 @@ try {
     HuffmanCodec = huffmanCoding.HuffmanCodec;
 } catch (error) {
     // Mock HuffmanCodec for testing without huffman-coding
+    // This mock should either work correctly or throw expected errors
     HuffmanCodec = class MockHuffmanCodec {
-        buildFromFrequencies() {}
-        serialize() { return 'mock_codec'; }
-        deserialize() {}
-        encode(data) { return new Uint8Array([1, 2, 3]); }
-        decode() { return [1, 2, 3]; }
+        constructor() {
+            this.codecData = null;
+        }
+        buildFromFrequencies(frequencies) {
+            // Store the original data for round-trip testing
+            this.codecData = { frequencies };
+        }
+        serialize() { 
+            return JSON.stringify(this.codecData); 
+        }
+        deserialize(data) {
+            this.codecData = JSON.parse(data);
+        }
+        encode(data) { 
+            // Simple mock: convert data to bytes but preserve as JSON for testing
+            return new Uint8Array(Buffer.from(JSON.stringify(data), 'utf8'));
+        }
+        decode(encodedData) { 
+            // Decode back from bytes
+            const str = Buffer.from(encodedData).toString('utf8');
+            return JSON.parse(str);
+        }
     };
 }
 
