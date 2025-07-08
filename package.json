@@ -8,6 +8,9 @@
     "test": "node --test src/test/*.test.js",
     "benchmark": "node src/benchmark.js",
     "start": "node src/index.js",
+    "serve": "npm run serve-visualizer",
+    "serve-visualizer": "node server.js",
+    "dev": "npm run serve-visualizer",
     "install-deps": "npm install @huggingface/transformers sqlite3"
   },
   "keywords": [
