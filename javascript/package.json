@@ -10,7 +10,9 @@
     "start": "node src/index.js",
     "serve": "npm run serve-visualizer",
     "serve-visualizer": "node server.js",
-    "dev": "npm run serve-visualizer",
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
     "install-deps": "npm install @huggingface/transformers sqlite3"
   },
   "keywords": [
@@ -37,5 +39,8 @@
     "dependencies": "Some dependencies like huffman-coding may need to be installed separately or implemented.",
     "transformers": "The @huggingface/transformers.js library is used for LLM inference.",
     "testing": "Tests are designed to work even when optional dependencies are missing."
+  },
+  "devDependencies": {
+    "vite": "^7.0.4"
   }
 }

@@ -38,6 +38,9 @@ bower_components
 .parcel-cache
 .next
 
+# Build output for GitHub Pages
+javascript/dist/
+
 # IDE
 .vscode/
 .idea/
