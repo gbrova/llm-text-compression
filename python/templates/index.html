@@ -253,20 +253,36 @@
             min-height: 100px;
         }
 
-        .compression-method {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding: 12px 15px;
-            margin: 8px 0;
+        .compression-table {
+            width: 100%;
+            border-collapse: collapse;
             background: white;
-            border-radius: 6px;
-            border: 1px solid #e0e0e0;
-            transition: background-color 0.2s ease;
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
         }
 
-        .compression-method:hover {
-            background: #f0f0f0;
+        .compression-table th {
+            background: #f8f9fa;
+            font-weight: 600;
+            color: #333;
+            padding: 12px 15px;
+            text-align: left;
+            border-bottom: 2px solid #e0e0e0;
+        }
+
+        .compression-table td {
+            padding: 12px 15px;
+            border-bottom: 1px solid #e0e0e0;
+            color: #555;
+        }
+
+        .compression-table tr:hover {
+            background: #f8f9fa;
+        }
+
+        .compression-table tr:last-child td {
+            border-bottom: none;
         }
 
         .compression-method-name {
@@ -439,50 +455,94 @@
             const originalSize = results.original_size;
             const methodNames = {
                 'original_text': 'Original Text',
-                'llm_ranks_zlib': 'LLM Ranks + Zlib',
-                'llm_ranks_huffman_zipf_bytes': 'LLM Ranks + Huffman (Zipf)',
+                'tokenizer_zlib': 'Tokenizer + Zlib',
                 'raw_zlib': 'Raw Zlib',
-                'tokenizer_zlib': 'Tokenizer + Zlib'
+                'llm_ranks_zlib': 'LLM Ranks + Zlib',
+                'llm_ranks_huffman_zipf_bytes': 'LLM Ranks + Huffman'
             };
             
-            // Create compression method displays
-            Object.entries(results).forEach(([method, data]) => {
-                if (method === 'original_size') return;
-                
-                const methodDiv = document.createElement('div');
-                methodDiv.className = 'compression-method';
-                
-                const nameDiv = document.createElement('div');
-                nameDiv.className = 'compression-method-name';
-                nameDiv.textContent = methodNames[method] || method;
-                
-                const sizeDiv = document.createElement('div');
-                sizeDiv.className = 'compression-size';
-                
-                if (method === 'original_text') {
-                    sizeDiv.textContent = `${originalSize} bytes`;
-                    methodDiv.appendChild(nameDiv);
-                    methodDiv.appendChild(sizeDiv);
-                } else {
-                    const size = data.compressed_size || data.size;
-                    const ratio = size / originalSize;
-                    const percentage = ((1 - ratio) * 100).toFixed(1);
+            // Define the order of methods to display
+            const methodOrder = [
+                'original_text',
+                'tokenizer_zlib',
+                'raw_zlib',
+                'llm_ranks_zlib',
+                'llm_ranks_huffman_zipf_bytes'
+            ];
+            
+            // Create table
+            const table = document.createElement('table');
+            table.className = 'compression-table';
+            
+            // Create header
+            const thead = document.createElement('thead');
+            const headerRow = document.createElement('tr');
+            
+            const methodHeader = document.createElement('th');
+            methodHeader.textContent = 'Method';
+            headerRow.appendChild(methodHeader);
+            
+            const bytesHeader = document.createElement('th');
+            bytesHeader.textContent = 'Bytes';
+            headerRow.appendChild(bytesHeader);
+            
+            const ratioHeader = document.createElement('th');
+            ratioHeader.textContent = 'Compression Ratio';
+            headerRow.appendChild(ratioHeader);
+            
+            thead.appendChild(headerRow);
+            table.appendChild(thead);
+            
+            // Create body
+            const tbody = document.createElement('tbody');
+            
+            // Add methods in the specified order
+            methodOrder.forEach(method => {
+                if (results[method] || method === 'original_text') {
+                    const row = document.createElement('tr');
                     
-                    sizeDiv.textContent = `${size} bytes`;
+                    const nameCell = document.createElement('td');
+                    nameCell.className = 'compression-method-name';
+                    nameCell.textContent = methodNames[method] || method;
+                    row.appendChild(nameCell);
                     
-                    const ratioDiv = document.createElement('div');
-                    ratioDiv.className = `compression-ratio ${getCompressionRatioClass(ratio)}`;
-                    ratioDiv.textContent = `${percentage}% saved`;
+                    const sizeCell = document.createElement('td');
+                    sizeCell.className = 'compression-size';
                     
-                    methodDiv.appendChild(nameDiv);
-                    methodDiv.appendChild(sizeDiv);
-                    methodDiv.appendChild(ratioDiv);
+                    const ratioCell = document.createElement('td');
+                    
+                    if (method === 'original_text') {
+                        sizeCell.textContent = `${originalSize} bytes`;
+                        ratioCell.textContent = '—';
+                    } else {
+                        const data = results[method];
+                        if (data) {
+                            const size = data.compressed_size || data.size;
+                            const ratio = size / originalSize;
+                            const percentage = ((1 - ratio) * 100).toFixed(1);
+                            
+                            sizeCell.textContent = `${size} bytes`;
+                            
+                            const ratioSpan = document.createElement('span');
+                            ratioSpan.className = `compression-ratio ${getCompressionRatioClass(ratio)}`;
+                            ratioSpan.textContent = `${percentage}% saved`;
+                            ratioCell.appendChild(ratioSpan);
+                        } else {
+                            sizeCell.textContent = '—';
+                            ratioCell.textContent = '—';
+                        }
+                    }
+                    
+                    row.appendChild(sizeCell);
+                    row.appendChild(ratioCell);
+                    tbody.appendChild(row);
                 }
-                
-                compressionDisplay.appendChild(methodDiv);
             });
             
-            compressionCount.textContent = `${Object.keys(results).length - 1} methods`;
+            table.appendChild(tbody);
+            compressionDisplay.appendChild(table);
+            
+            compressionCount.textContent = `${methodOrder.length} methods`;
             compressionSection.style.display = 'block';
         }
 
