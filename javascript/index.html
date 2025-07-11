@@ -829,9 +829,12 @@
             }
             
             // Get token ranks if not provided
-            if (ranks === null) {
+            if (!ranks) {
+                console.log('⚠️ LLM Ranks Zlib: Computing ranks (should be cached!)', 'ranks =', ranks);
                 const result = await getTokenRanks(text);
                 ranks = result.ranks;
+            } else {
+                console.log('✅ LLM Ranks Zlib: Using pre-computed ranks, length:', ranks.length);
             }
             
             // Compress ranks with zlib
@@ -849,9 +852,12 @@
             }
             
             // Get token ranks if not provided
-            if (ranks === null) {
+            if (!ranks) {
+                console.log('⚠️ LLM Ranks Huffman: Computing ranks (should be cached!)', 'ranks =', ranks);
                 const result = await getTokenRanks(text);
                 ranks = result.ranks;
+            } else {
+                console.log('✅ LLM Ranks Huffman: Using pre-computed ranks, length:', ranks.length);
             }
             
             // Use Huffman coding with Zipf-based probabilities
@@ -864,6 +870,7 @@
         }
         
         async function runCompressionMethods(text, ranks = null) {
+            console.log('🔍 runCompressionMethods called with ranks:', ranks ? `${ranks.length} ranks` : 'null');
             const results = {};
             const originalSize = new TextEncoder().encode(text).length;
             
@@ -1091,7 +1098,11 @@
                 
                 // Run compression methods with pre-computed ranks
                 try {
+                    console.log('🚀 Starting compression methods with ranks array length:', result.ranks.length);
+                    const compressionStart = performance.now();
                     const compressionResults = await runCompressionMethods(text, result.ranks);
+                    const compressionEnd = performance.now();
+                    console.log(`⏱️ Compression methods took ${compressionEnd - compressionStart}ms`);
                     displayCompressionResults(compressionResults);
                 } catch (compressionError) {
                     console.warn('Compression analysis failed:', compressionError);
