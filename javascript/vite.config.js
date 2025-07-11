@@ -27,7 +27,10 @@ export default defineConfig({
     sourcemap: true,
     
     // Configure chunk size warnings
-    chunkSizeWarningLimit: 1000
+    chunkSizeWarningLimit: 1000,
+    
+    // Target modern browsers to avoid crypto polyfill issues
+    target: 'esnext'
   },
   
   // Development server configuration
@@ -51,5 +54,10 @@ export default defineConfig({
   // Configure handling of dependencies
   optimizeDeps: {
     include: ['@huggingface/transformers']
+  },
+  
+  // Define global constants to avoid Node.js polyfill issues
+  define: {
+    global: 'globalThis'
   }
 });
