@@ -101,7 +101,7 @@ def index():
 
 @app.route('/analyze', methods=['POST'])
 def analyze_text():
-    """Analyze text and return token ranks for visualization."""
+    """Analyze text and return both token ranks and compression results."""
     try:
         data = request.get_json()
         text = data.get('text', '').strip()
@@ -109,41 +109,48 @@ def analyze_text():
         if not text:
             return jsonify({'error': 'Please enter some text to analyze'})
         
-        # Get tokens and ranks
-        tokens_with_ranks = get_tokens_and_ranks(text)
+        # Get ranker instance
+        ranker_instance = get_ranker()
         
-        return jsonify({
-            'success': True,
-            'tokens': tokens_with_ranks,
-            'total_tokens': len(tokens_with_ranks)
-        })
+        # Compute token ranks once
+        ranks = ranker_instance.get_token_ranks(text)
         
-    except Exception as e:
-        return jsonify({'error': f'Analysis failed: {str(e)}'})
-
-@app.route('/compress', methods=['POST'])
-def compress_text():
-    """Compress text using various methods and return results."""
-    try:
-        data = request.get_json()
-        text = data.get('text', '').strip()
+        # Get tokens by encoding then decoding each token individually
+        encoded = ranker_instance.tokenizer.encode(text)
+        tokens = []
         
-        if not text:
-            return jsonify({'error': 'Please enter some text to compress'})
+        for token_id in encoded:
+            token_text = ranker_instance.tokenizer.decode([token_id])
+            tokens.append(token_text)
         
-        # Get compression pipeline
+        # Ensure we have the same number of tokens and ranks
+        if len(tokens) != len(ranks):
+            raise ValueError(f"Mismatch: {len(tokens)} tokens but {len(ranks)} ranks")
+        
+        # Calculate colors for visualization
+        max_rank = max(ranks) if ranks else 1
+        
+        tokens_with_ranks = []
+        for token, rank in zip(tokens, ranks):
+            tokens_with_ranks.append({
+                'token': token,
+                'rank': rank,
+                'color': rank_to_color(rank, max_rank)
+            })
+        
+        # Now compute compression results using the pre-computed ranks
         pipeline = get_compression_pipeline()
         
-        # Run compression methods
+        # Run compression methods with pre-computed ranks
         results = {}
         original_size = len(text.encode('utf-8'))
         results['original_size'] = original_size
         results['original_text'] = {'size': original_size}
         
-        # Define compression methods to run
+        # Define compression methods to run with pre-computed ranks
         compression_methods = [
-            ('llm_ranks_zlib', lambda: pipeline.compress_with_llm_ranks(text)),
-            ('llm_ranks_huffman_zipf_bytes', lambda: pipeline.compress_with_llm_ranks_huffman_zipf_bytes(text)),
+            ('llm_ranks_zlib', lambda: pipeline.compress_with_llm_ranks(text, ranks=ranks)),
+            ('llm_ranks_huffman_zipf_bytes', lambda: pipeline.compress_with_llm_ranks_huffman_zipf_bytes(text, ranks=ranks)),
             ('raw_zlib', lambda: pipeline.compress_with_raw_zlib(text)),
             ('tokenizer_zlib', lambda: pipeline.compress_with_tokenizer_zlib(text))
         ]
@@ -162,11 +169,18 @@ def compress_text():
         
         return jsonify({
             'success': True,
+            'tokens': tokens_with_ranks,
+            'total_tokens': len(tokens_with_ranks),
             'results': results
         })
         
     except Exception as e:
-        return jsonify({'error': f'Compression failed: {str(e)}'})
+        return jsonify({'error': f'Analysis failed: {str(e)}'})
+
+@app.route('/compress', methods=['POST'])
+def compress_text():
+    """Legacy endpoint for compression only - redirect to analyze."""
+    return analyze_text()
 
 @app.route('/health')
 def health_check():

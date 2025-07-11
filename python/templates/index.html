@@ -537,25 +537,11 @@
                 if (data.success) {
                     displayTokens(data.tokens);
                     
-                    // Also fetch compression results
-                    try {
-                        const compressionResponse = await fetch('/compress', {
-                            method: 'POST',
-                            headers: {
-                                'Content-Type': 'application/json',
-                            },
-                            body: JSON.stringify({ text: text })
-                        });
-                        
-                        const compressionData = await compressionResponse.json();
-                        
-                        if (compressionData.success) {
-                            displayCompressionResults(compressionData.results);
-                        } else {
-                            console.warn('Compression analysis failed:', compressionData.error);
-                        }
-                    } catch (compressionError) {
-                        console.warn('Compression analysis error:', compressionError);
+                    // Display compression results from the same response
+                    if (data.results) {
+                        displayCompressionResults(data.results);
+                    } else {
+                        console.warn('No compression results in response');
                     }
                 } else {
                     showError(data.error || 'Analysis failed');
