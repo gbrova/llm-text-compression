@@ -809,14 +809,16 @@
             return (1 / Math.pow(rank, alpha)) / denominator;
         }
         
-        async function compressWithLLMRanksZlib(text) {
+        async function compressWithLLMRanksZlib(text, ranks = null) {
             if (!isModelReady) {
                 throw new Error('Model not ready');
             }
             
-            // Get token ranks
-            const result = await getTokenRanks(text);
-            const ranks = result.ranks;
+            // Get token ranks if not provided
+            if (ranks === null) {
+                const result = await getTokenRanks(text);
+                ranks = result.ranks;
+            }
             
             // Compress ranks with zlib
             const compressed = compressWithZlib(ranks);
@@ -827,14 +829,16 @@
             };
         }
         
-        async function compressWithLLMRanksHuffmanZipf(text) {
+        async function compressWithLLMRanksHuffmanZipf(text, ranks = null) {
             if (!isModelReady) {
                 throw new Error('Model not ready');
             }
             
-            // Get token ranks
-            const result = await getTokenRanks(text);
-            const ranks = result.ranks;
+            // Get token ranks if not provided
+            if (ranks === null) {
+                const result = await getTokenRanks(text);
+                ranks = result.ranks;
+            }
             
             // Use Huffman coding with Zipf-based probabilities
             const compressed = compressWithHuffman(ranks);
@@ -845,7 +849,7 @@
             };
         }
         
-        async function runCompressionMethods(text) {
+        async function runCompressionMethods(text, ranks = null) {
             const results = {};
             const originalSize = new TextEncoder().encode(text).length;
             
@@ -871,17 +875,17 @@
                 console.warn('Tokenizer zlib compression failed:', error);
             }
             
-            // Method 3: LLM ranks + zlib
+            // Method 3: LLM ranks + zlib (with pre-computed ranks)
             try {
-                const result = await compressWithLLMRanksZlib(text);
+                const result = await compressWithLLMRanksZlib(text, ranks);
                 results.llm_ranks_zlib = result;
             } catch (error) {
                 console.warn('LLM ranks zlib compression failed:', error);
             }
             
-            // Method 4: LLM ranks + Huffman (Zipf)
+            // Method 4: LLM ranks + Huffman (Zipf) (with pre-computed ranks)
             try {
-                const result = await compressWithLLMRanksHuffmanZipf(text);
+                const result = await compressWithLLMRanksHuffmanZipf(text, ranks);
                 results.llm_ranks_huffman_zipf_bytes = result;
             } catch (error) {
                 console.warn('LLM ranks Huffman compression failed:', error);
@@ -1085,6 +1089,7 @@
             // Use requestAnimationFrame to allow UI updates to render before heavy computation
             requestAnimationFrame(async () => {
                 try {
+                    // Compute token ranks once
                     const result = await getTokenRanks(text);
                 
                 if (result.tokens.length === 0) {
@@ -1094,9 +1099,9 @@
                 
                 displayTokens(result.tokens, result.ranks);
                 
-                // Run compression methods
+                // Run compression methods with pre-computed ranks
                 try {
-                    const compressionResults = await runCompressionMethods(text);
+                    const compressionResults = await runCompressionMethods(text, result.ranks);
                     displayCompressionResults(compressionResults);
                 } catch (compressionError) {
                     console.warn('Compression analysis failed:', compressionError);
