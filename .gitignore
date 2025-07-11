@@ -12,3 +12,7 @@ compression_results.db
 
 # Ranker caching database
 ranker_cache.db.mypy_cache/
+ranker_cache.db
+
+# Generated analysis files
+parameter_analysis_data.json
