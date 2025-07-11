@@ -9,6 +9,7 @@ import os
 import argparse
 from flask import Flask, render_template, request, jsonify
 from llm_ranker import LLMRanker
+from compression_pipeline import CompressionPipeline
 from typing import List, Dict, Tuple
 import colorsys
 
@@ -16,6 +17,7 @@ app = Flask(__name__)
 
 # Global ranker instance (initialized on first use)
 ranker = None
+compression_pipeline = None
 
 def get_ranker():
     """Get or initialize the global ranker instance."""
@@ -23,6 +25,13 @@ def get_ranker():
     if ranker is None:
         ranker = LLMRanker(model_name="gpt2")
     return ranker
+
+def get_compression_pipeline():
+    """Get or initialize the global compression pipeline instance."""
+    global compression_pipeline
+    if compression_pipeline is None:
+        compression_pipeline = CompressionPipeline(enable_cache=True)
+    return compression_pipeline
 
 def rgb_to_hex(r: float, g: float, b: float) -> str:
     """Convert RGB values (0-1) to hex color string."""
@@ -112,6 +121,53 @@ def analyze_text():
     except Exception as e:
         return jsonify({'error': f'Analysis failed: {str(e)}'})
 
+@app.route('/compress', methods=['POST'])
+def compress_text():
+    """Compress text using various methods and return results."""
+    try:
+        data = request.get_json()
+        text = data.get('text', '').strip()
+        
+        if not text:
+            return jsonify({'error': 'Please enter some text to compress'})
+        
+        # Get compression pipeline
+        pipeline = get_compression_pipeline()
+        
+        # Run compression methods
+        results = {}
+        original_size = len(text.encode('utf-8'))
+        results['original_size'] = original_size
+        results['original_text'] = {'size': original_size}
+        
+        # Define compression methods to run
+        compression_methods = [
+            ('llm_ranks_zlib', lambda: pipeline.compress_with_llm_ranks(text)),
+            ('llm_ranks_huffman_zipf_bytes', lambda: pipeline.compress_with_llm_ranks_huffman_zipf_bytes(text)),
+            ('raw_zlib', lambda: pipeline.compress_with_raw_zlib(text)),
+            ('tokenizer_zlib', lambda: pipeline.compress_with_tokenizer_zlib(text))
+        ]
+        
+        for method_name, method_func in compression_methods:
+            try:
+                _, result = method_func()
+                results[method_name] = {
+                    'compressed_size': result.compressed_size,
+                    'compression_ratio': result.compression_ratio,
+                    'compression_time': result.compression_time
+                }
+            except Exception as e:
+                print(f"Compression method {method_name} failed: {e}")
+                # Continue with other methods
+        
+        return jsonify({
+            'success': True,
+            'results': results
+        })
+        
+    except Exception as e:
+        return jsonify({'error': f'Compression failed: {str(e)}'})
+
 @app.route('/health')
 def health_check():
     """Health check endpoint."""
@@ -140,6 +196,12 @@ def main():
     get_ranker()
     
     print("✅ Model loaded successfully!")
+    print("🔧 Initializing compression pipeline...")
+    
+    # Initialize the compression pipeline
+    get_compression_pipeline()
+    
+    print("✅ Compression pipeline ready!")
     print(f"🌐 Starting web server at http://{host}:{port}")
     print(f"💡 You can also set port via environment variable: FLASK_PORT={port}")
     

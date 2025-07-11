@@ -246,6 +246,60 @@
             background: #f0f0f0;
         }
 
+        .compression-display {
+            background: #f8f9fa;
+            border-radius: 10px;
+            padding: 25px;
+            min-height: 100px;
+        }
+
+        .compression-method {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 12px 15px;
+            margin: 8px 0;
+            background: white;
+            border-radius: 6px;
+            border: 1px solid #e0e0e0;
+            transition: background-color 0.2s ease;
+        }
+
+        .compression-method:hover {
+            background: #f0f0f0;
+        }
+
+        .compression-method-name {
+            font-weight: 600;
+            color: #333;
+        }
+
+        .compression-size {
+            font-size: 0.9em;
+            color: #666;
+        }
+
+        .compression-ratio {
+            font-weight: 600;
+            padding: 4px 8px;
+            border-radius: 4px;
+            color: white;
+            font-size: 0.9em;
+        }
+
+        .compression-ratio.excellent {
+            background: #28a745;
+        }
+
+        .compression-ratio.good {
+            background: #ffc107;
+            color: #333;
+        }
+
+        .compression-ratio.poor {
+            background: #dc3545;
+        }
+
         @media (max-width: 768px) {
             .content {
                 padding: 20px;
@@ -303,6 +357,15 @@
                 </div>
             </div>
             
+            <div id="compressionSection" class="results-section" style="display: none;">
+                <div class="results-header">
+                    <div class="results-title">Compression Results</div>
+                    <div id="compressionCount" class="token-count"></div>
+                </div>
+                
+                <div id="compressionDisplay" class="compression-display"></div>
+            </div>
+            
             <div id="errorMessage" class="error" style="display: none;"></div>
         </div>
     </div>
@@ -314,6 +377,9 @@
         const tokensDisplay = document.getElementById('tokensDisplay');
         const tokenCount = document.getElementById('tokenCount');
         const errorMessage = document.getElementById('errorMessage');
+        const compressionSection = document.getElementById('compressionSection');
+        const compressionDisplay = document.getElementById('compressionDisplay');
+        const compressionCount = document.getElementById('compressionCount');
 
         function setExampleText(text) {
             textInput.value = text;
@@ -356,6 +422,70 @@
             tokenCount.textContent = `${tokens.length} tokens`;
         }
 
+        function getCompressionRatioClass(ratio) {
+            if (ratio < 0.3) return 'excellent';
+            if (ratio < 0.7) return 'good';
+            return 'poor';
+        }
+
+        function displayCompressionResults(results) {
+            compressionDisplay.innerHTML = '';
+            
+            if (!results || Object.keys(results).length === 0) {
+                compressionDisplay.innerHTML = '<div class="loading">No compression results available</div>';
+                return;
+            }
+            
+            const originalSize = results.original_size;
+            const methodNames = {
+                'original_text': 'Original Text',
+                'llm_ranks_zlib': 'LLM Ranks + Zlib',
+                'llm_ranks_huffman_zipf_bytes': 'LLM Ranks + Huffman (Zipf)',
+                'raw_zlib': 'Raw Zlib',
+                'tokenizer_zlib': 'Tokenizer + Zlib'
+            };
+            
+            // Create compression method displays
+            Object.entries(results).forEach(([method, data]) => {
+                if (method === 'original_size') return;
+                
+                const methodDiv = document.createElement('div');
+                methodDiv.className = 'compression-method';
+                
+                const nameDiv = document.createElement('div');
+                nameDiv.className = 'compression-method-name';
+                nameDiv.textContent = methodNames[method] || method;
+                
+                const sizeDiv = document.createElement('div');
+                sizeDiv.className = 'compression-size';
+                
+                if (method === 'original_text') {
+                    sizeDiv.textContent = `${originalSize} bytes`;
+                    methodDiv.appendChild(nameDiv);
+                    methodDiv.appendChild(sizeDiv);
+                } else {
+                    const size = data.compressed_size || data.size;
+                    const ratio = size / originalSize;
+                    const percentage = ((1 - ratio) * 100).toFixed(1);
+                    
+                    sizeDiv.textContent = `${size} bytes`;
+                    
+                    const ratioDiv = document.createElement('div');
+                    ratioDiv.className = `compression-ratio ${getCompressionRatioClass(ratio)}`;
+                    ratioDiv.textContent = `${percentage}% saved`;
+                    
+                    methodDiv.appendChild(nameDiv);
+                    methodDiv.appendChild(sizeDiv);
+                    methodDiv.appendChild(ratioDiv);
+                }
+                
+                compressionDisplay.appendChild(methodDiv);
+            });
+            
+            compressionCount.textContent = `${Object.keys(results).length - 1} methods`;
+            compressionSection.style.display = 'block';
+        }
+
         async function analyzeText() {
             const text = textInput.value.trim();
             
@@ -381,6 +511,27 @@
                 
                 if (data.success) {
                     displayTokens(data.tokens);
+                    
+                    // Also fetch compression results
+                    try {
+                        const compressionResponse = await fetch('/compress', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                            },
+                            body: JSON.stringify({ text: text })
+                        });
+                        
+                        const compressionData = await compressionResponse.json();
+                        
+                        if (compressionData.success) {
+                            displayCompressionResults(compressionData.results);
+                        } else {
+                            console.warn('Compression analysis failed:', compressionData.error);
+                        }
+                    } catch (compressionError) {
+                        console.warn('Compression analysis error:', compressionError);
+                    }
                 } else {
                     showError(data.error || 'Analysis failed');
                 }

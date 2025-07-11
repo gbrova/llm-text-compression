@@ -273,6 +273,60 @@
             background: #f0f0f0;
         }
 
+        .compression-display {
+            background: #f8f9fa;
+            border-radius: 10px;
+            padding: 25px;
+            min-height: 100px;
+        }
+
+        .compression-method {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 12px 15px;
+            margin: 8px 0;
+            background: white;
+            border-radius: 6px;
+            border: 1px solid #e0e0e0;
+            transition: background-color 0.2s ease;
+        }
+
+        .compression-method:hover {
+            background: #f0f0f0;
+        }
+
+        .compression-method-name {
+            font-weight: 600;
+            color: #333;
+        }
+
+        .compression-size {
+            font-size: 0.9em;
+            color: #666;
+        }
+
+        .compression-ratio {
+            font-weight: 600;
+            padding: 4px 8px;
+            border-radius: 4px;
+            color: white;
+            font-size: 0.9em;
+        }
+
+        .compression-ratio.excellent {
+            background: #28a745;
+        }
+
+        .compression-ratio.good {
+            background: #ffc107;
+            color: #333;
+        }
+
+        .compression-ratio.poor {
+            background: #dc3545;
+        }
+
         @media (max-width: 768px) {
             .content {
                 padding: 20px;
@@ -334,6 +388,15 @@
                 </div>
             </div>
             
+            <div id="compressionSection" class="results-section" style="display: none;">
+                <div class="results-header">
+                    <div class="results-title">Compression Results</div>
+                    <div id="compressionCount" class="token-count"></div>
+                </div>
+                
+                <div id="compressionDisplay" class="compression-display"></div>
+            </div>
+            
             <div id="errorMessage" class="error" style="display: none;"></div>
         </div>
     </div>
@@ -341,6 +404,9 @@
     <script type="module">
         // Import transformers.js from CDN (for now, until we get proper bundling)
         const { pipeline, env } = await import('https://cdn.jsdelivr.net/npm/@xenova/transformers@2.17.2/dist/transformers.min.js');
+        
+        // Import compression libraries
+        const pako = await import('https://cdn.jsdelivr.net/npm/pako@2.1.0/dist/pako.esm.mjs');
         
         // Configure transformers.js
         env.allowLocalModels = false;
@@ -364,6 +430,9 @@
         const errorMessage = document.getElementById('errorMessage');
         const modelStatus = document.getElementById('modelStatus');
         const modelStatusText = document.getElementById('modelStatusText');
+        const compressionSection = document.getElementById('compressionSection');
+        const compressionDisplay = document.getElementById('compressionDisplay');
+        const compressionCount = document.getElementById('compressionCount');
         
         // Initialize the model
         async function initializeModel() {
@@ -608,6 +677,217 @@
             return predictions.length; // Fallback to worst rank
         }
         
+        // Compression functions
+        function compressWithZlib(data) {
+            // Convert data to Uint8Array if it's not already
+            let uint8Data;
+            if (typeof data === 'string') {
+                uint8Data = new TextEncoder().encode(data);
+            } else if (Array.isArray(data)) {
+                // Convert array to JSON string then to bytes
+                uint8Data = new TextEncoder().encode(JSON.stringify(data));
+            } else {
+                uint8Data = new Uint8Array(data);
+            }
+            
+            const compressed = pako.deflate(uint8Data);
+            return compressed;
+        }
+        
+        function compressWithTokenizerZlib(text) {
+            if (!tokenizer) {
+                throw new Error('Tokenizer not ready');
+            }
+            
+            // Tokenize the text
+            const tokens = tokenizer.encode(text);
+            
+            // Convert tokens to compressed format
+            const compressed = compressWithZlib(tokens);
+            
+            return {
+                compressed_size: compressed.length,
+                original_size: new TextEncoder().encode(text).length
+            };
+        }
+        
+        // Simple Huffman coding implementation
+        class HuffmanNode {
+            constructor(char, freq, left = null, right = null) {
+                this.char = char;
+                this.freq = freq;
+                this.left = left;
+                this.right = right;
+            }
+        }
+        
+        function buildHuffmanTree(frequencies) {
+            const nodes = Object.entries(frequencies)
+                .map(([char, freq]) => new HuffmanNode(char, freq))
+                .sort((a, b) => a.freq - b.freq);
+            
+            while (nodes.length > 1) {
+                const left = nodes.shift();
+                const right = nodes.shift();
+                const parent = new HuffmanNode(null, left.freq + right.freq, left, right);
+                
+                // Insert in sorted order
+                let inserted = false;
+                for (let i = 0; i < nodes.length; i++) {
+                    if (parent.freq <= nodes[i].freq) {
+                        nodes.splice(i, 0, parent);
+                        inserted = true;
+                        break;
+                    }
+                }
+                if (!inserted) {
+                    nodes.push(parent);
+                }
+            }
+            
+            return nodes[0];
+        }
+        
+        function buildHuffmanCodes(root) {
+            const codes = {};
+            
+            function traverse(node, code) {
+                if (node.char !== null) {
+                    codes[node.char] = code || '0';
+                } else {
+                    if (node.left) traverse(node.left, code + '0');
+                    if (node.right) traverse(node.right, code + '1');
+                }
+            }
+            
+            if (root) {
+                traverse(root, '');
+            }
+            
+            return codes;
+        }
+        
+        function compressWithHuffman(data) {
+            // Count frequencies
+            const frequencies = {};
+            for (const item of data) {
+                frequencies[item] = (frequencies[item] || 0) + 1;
+            }
+            
+            if (Object.keys(frequencies).length === 1) {
+                // Single character, return minimal encoding
+                return new Uint8Array([data.length]);
+            }
+            
+            // Build Huffman tree and codes
+            const root = buildHuffmanTree(frequencies);
+            const codes = buildHuffmanCodes(root);
+            
+            // Encode data
+            let encoded = '';
+            for (const item of data) {
+                encoded += codes[item];
+            }
+            
+            // Convert bit string to bytes
+            const bytes = [];
+            for (let i = 0; i < encoded.length; i += 8) {
+                const byte = encoded.substr(i, 8).padEnd(8, '0');
+                bytes.push(parseInt(byte, 2));
+            }
+            
+            return new Uint8Array(bytes);
+        }
+        
+        // Zipf distribution for rank-based Huffman coding
+        function getZipfProbability(rank, totalRanks) {
+            const alpha = 1.0; // Zipf parameter
+            const denominator = Array.from({length: totalRanks}, (_, i) => 1 / Math.pow(i + 1, alpha))
+                .reduce((sum, val) => sum + val, 0);
+            return (1 / Math.pow(rank, alpha)) / denominator;
+        }
+        
+        async function compressWithLLMRanksZlib(text) {
+            if (!isModelReady) {
+                throw new Error('Model not ready');
+            }
+            
+            // Get token ranks
+            const result = await getTokenRanks(text);
+            const ranks = result.ranks;
+            
+            // Compress ranks with zlib
+            const compressed = compressWithZlib(ranks);
+            
+            return {
+                compressed_size: compressed.length,
+                original_size: new TextEncoder().encode(text).length
+            };
+        }
+        
+        async function compressWithLLMRanksHuffmanZipf(text) {
+            if (!isModelReady) {
+                throw new Error('Model not ready');
+            }
+            
+            // Get token ranks
+            const result = await getTokenRanks(text);
+            const ranks = result.ranks;
+            
+            // Use Huffman coding with Zipf-based probabilities
+            const compressed = compressWithHuffman(ranks);
+            
+            return {
+                compressed_size: compressed.length,
+                original_size: new TextEncoder().encode(text).length
+            };
+        }
+        
+        async function runCompressionMethods(text) {
+            const results = {};
+            const originalSize = new TextEncoder().encode(text).length;
+            
+            results.original_size = originalSize;
+            results.original_text = { size: originalSize };
+            
+            // Method 1: Raw zlib compression
+            try {
+                const compressed = compressWithZlib(text);
+                results.raw_zlib = {
+                    compressed_size: compressed.length,
+                    original_size: originalSize
+                };
+            } catch (error) {
+                console.warn('Raw zlib compression failed:', error);
+            }
+            
+            // Method 2: Tokenizer + zlib
+            try {
+                const result = compressWithTokenizerZlib(text);
+                results.tokenizer_zlib = result;
+            } catch (error) {
+                console.warn('Tokenizer zlib compression failed:', error);
+            }
+            
+            // Method 3: LLM ranks + zlib
+            try {
+                const result = await compressWithLLMRanksZlib(text);
+                results.llm_ranks_zlib = result;
+            } catch (error) {
+                console.warn('LLM ranks zlib compression failed:', error);
+            }
+            
+            // Method 4: LLM ranks + Huffman (Zipf)
+            try {
+                const result = await compressWithLLMRanksHuffmanZipf(text);
+                results.llm_ranks_huffman_zipf_bytes = result;
+            } catch (error) {
+                console.warn('LLM ranks Huffman compression failed:', error);
+            }
+            
+            return results;
+        }
+        
         // UI functions
         function setExampleText(text) {
             textInput.value = text;
@@ -653,6 +933,70 @@
             tokenCount.textContent = `${tokens.length} tokens`;
         }
         
+        function getCompressionRatioClass(ratio) {
+            if (ratio < 0.3) return 'excellent';
+            if (ratio < 0.7) return 'good';
+            return 'poor';
+        }
+
+        function displayCompressionResults(results) {
+            compressionDisplay.innerHTML = '';
+            
+            if (!results || Object.keys(results).length === 0) {
+                compressionDisplay.innerHTML = '<div class="loading">No compression results available</div>';
+                return;
+            }
+            
+            const originalSize = results.original_size;
+            const methodNames = {
+                'original_text': 'Original Text',
+                'llm_ranks_zlib': 'LLM Ranks + Zlib',
+                'llm_ranks_huffman_zipf_bytes': 'LLM Ranks + Huffman (Zipf)',
+                'raw_zlib': 'Raw Zlib',
+                'tokenizer_zlib': 'Tokenizer + Zlib'
+            };
+            
+            // Create compression method displays
+            Object.entries(results).forEach(([method, data]) => {
+                if (method === 'original_size') return;
+                
+                const methodDiv = document.createElement('div');
+                methodDiv.className = 'compression-method';
+                
+                const nameDiv = document.createElement('div');
+                nameDiv.className = 'compression-method-name';
+                nameDiv.textContent = methodNames[method] || method;
+                
+                const sizeDiv = document.createElement('div');
+                sizeDiv.className = 'compression-size';
+                
+                if (method === 'original_text') {
+                    sizeDiv.textContent = `${originalSize} bytes`;
+                    methodDiv.appendChild(nameDiv);
+                    methodDiv.appendChild(sizeDiv);
+                } else {
+                    const size = data.compressed_size || data.size;
+                    const ratio = size / originalSize;
+                    const percentage = ((1 - ratio) * 100).toFixed(1);
+                    
+                    sizeDiv.textContent = `${size} bytes`;
+                    
+                    const ratioDiv = document.createElement('div');
+                    ratioDiv.className = `compression-ratio ${getCompressionRatioClass(ratio)}`;
+                    ratioDiv.textContent = `${percentage}% saved`;
+                    
+                    methodDiv.appendChild(nameDiv);
+                    methodDiv.appendChild(sizeDiv);
+                    methodDiv.appendChild(ratioDiv);
+                }
+                
+                compressionDisplay.appendChild(methodDiv);
+            });
+            
+            compressionCount.textContent = `${Object.keys(results).length - 1} methods`;
+            compressionSection.style.display = 'block';
+        }
+        
         // Main analysis function
         async function analyzeText() {
             const text = textInput.value.trim();
@@ -680,6 +1024,15 @@
                 }
                 
                 displayTokens(result.tokens, result.ranks);
+                
+                // Run compression methods
+                try {
+                    const compressionResults = await runCompressionMethods(text);
+                    displayCompressionResults(compressionResults);
+                } catch (compressionError) {
+                    console.warn('Compression analysis failed:', compressionError);
+                    // Don't show error to user, just log it
+                }
                 
             } catch (error) {
                 console.error('Analysis error:', error);
