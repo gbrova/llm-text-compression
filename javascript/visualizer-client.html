@@ -105,6 +105,29 @@
             transform: none;
         }
 
+        .analyze-btn.loading {
+            opacity: 0.8;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .spinner {
+            display: inline-block;
+            width: 16px;
+            height: 16px;
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            border-radius: 50%;
+            border-top-color: white;
+            animation: spin 1s linear infinite;
+            margin-right: 8px;
+        }
+
+        @keyframes spin {
+            to {
+                transform: rotate(360deg);
+            }
+        }
+
         .model-status {
             background: #f8f9fa;
             border: 1px solid #e0e0e0;
@@ -348,13 +371,13 @@
                     class="text-input" 
                     placeholder="Type some text here and see how each token is ranked by the language model..."
                 ></textarea>
-                <button id="analyzeBtn" class="analyze-btn" disabled>🔍 Analyze Text</button>
+                <button id="analyzeBtn" class="analyze-btn" disabled>🔍 Compress Text</button>
                 
             </div>
             
             <div id="resultsSection" class="results-section" style="display: none;">
                 <div class="results-header">
-                    <div class="results-title">Token Analysis Results</div>
+                    <div class="results-title">Token ranks</div>
                     <div id="tokenCount" class="token-count"></div>
                 </div>
                 
@@ -538,6 +561,11 @@
                         const actualToken = tokens[i];
                         const rank = findTokenRank(actualToken, predictions);
                         ranks.push(rank);
+                        
+                        // Yield control back to the UI thread every few tokens
+                        if (i % 5 === 0) {
+                            await new Promise(resolve => setTimeout(resolve, 0));
+                        }
                         
                     } catch (error) {
                         console.warn(`Error getting rank for token ${i}:`, error);
@@ -883,6 +911,11 @@
             hideError();
         }
         
+        function showCompressionLoading() {
+            compressionDisplay.innerHTML = '<div class="loading"><span class="spinner"></span>🔄 Running compression analysis...</div>';
+            compressionSection.style.display = 'block';
+        }
+        
         function displayTokens(tokens, ranks) {
             tokensDisplay.innerHTML = '';
             
@@ -1036,12 +1069,23 @@
                 return;
             }
             
-            analyzeBtn.disabled = true;
-            analyzeBtn.textContent = '🔄 Analyzing...';
-            showLoading();
+            // Hide old results and show loading state
+            resultsSection.style.display = 'none';
+            compressionSection.style.display = 'none';
+            hideError();
             
-            try {
-                const result = await getTokenRanks(text);
+            // Update button with spinner
+            analyzeBtn.disabled = true;
+            analyzeBtn.className = 'analyze-btn loading';
+            analyzeBtn.innerHTML = '<span class="spinner"></span>🔄 Analyzing...';
+            
+            showLoading();
+            showCompressionLoading();
+            
+            // Use requestAnimationFrame to allow UI updates to render before heavy computation
+            requestAnimationFrame(async () => {
+                try {
+                    const result = await getTokenRanks(text);
                 
                 if (result.tokens.length === 0) {
                     showError('No tokens found in the text.');
@@ -1059,13 +1103,15 @@
                     // Don't show error to user, just log it
                 }
                 
-            } catch (error) {
-                console.error('Analysis error:', error);
-                showError('Analysis failed: ' + error.message);
-            } finally {
-                analyzeBtn.disabled = false;
-                analyzeBtn.textContent = '🔍 Analyze Text';
-            }
+                } catch (error) {
+                    console.error('Analysis error:', error);
+                    showError('Analysis failed: ' + error.message);
+                } finally {
+                    analyzeBtn.disabled = false;
+                    analyzeBtn.className = 'analyze-btn';
+                    analyzeBtn.innerHTML = '🔍 Compress Text';
+                }
+            }); // Allow UI updates to render before heavy computation
         }
         
         // Event listeners
