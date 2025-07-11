@@ -147,7 +147,8 @@ class CompressionPipeline:
         self, 
         text: str, 
         model_name: str = "gpt2",
-        max_context_length: Optional[int] = None
+        max_context_length: Optional[int] = None,
+        ranks: Optional[List[int]] = None
     ) -> Tuple[bytes, CompressionResult]:
         """Compress text using LLM rank encoding + zlib.
         
@@ -155,15 +156,17 @@ class CompressionPipeline:
             text: Input text to compress
             model_name: LLM model to use for ranking
             max_context_length: Maximum context length for LLM
+            ranks: Pre-computed token ranks (optional, will compute if not provided)
             
         Returns:
             Tuple of (compressed_data, compression_result)
         """
         ranker = self._get_ranker(model_name, max_context_length)
         
-        # Phase 1: Get token ranks (with caching)
+        # Phase 1: Get token ranks (with caching) if not provided
         start_time = time.time()
-        ranks = self.get_token_ranks_cached(text, ranker)
+        if ranks is None:
+            ranks = self.get_token_ranks_cached(text, ranker)
         
         # Phase 2: Compress ranks with zlib
         ranks_bytes = pickle.dumps(ranks)
@@ -191,7 +194,8 @@ class CompressionPipeline:
         self, 
         text: str, 
         model_name: str = "gpt2",
-        max_context_length: Optional[int] = None
+        max_context_length: Optional[int] = None,
+        ranks: Optional[List[int]] = None
     ) -> Tuple[bytes, CompressionResult]:
         """Compress text using LLM rank encoding + Huffman coding.
         
@@ -199,14 +203,16 @@ class CompressionPipeline:
             text: Input text to compress
             model_name: LLM model to use for ranking
             max_context_length: Maximum context length for LLM
+            ranks: Pre-computed token ranks (optional, will compute if not provided)
             
         Returns:
             Tuple of (compressed_data, compression_result)
         """
         ranker = self._get_ranker(model_name, max_context_length)
         
-        # Phase 1: Get token ranks (with caching)
-        ranks = self.get_token_ranks_cached(text, ranker)
+        # Phase 1: Get token ranks (with caching) if not provided
+        if ranks is None:
+            ranks = self.get_token_ranks_cached(text, ranker)
         
         # Phase 2: Compress ranks with Huffman coding
         compressed_data, compression_time = self.huffman_compressor.compress_ranks_with_timing(ranks, 'basic')
@@ -275,7 +281,8 @@ class CompressionPipeline:
         self, 
         text: str, 
         model_name: str = "gpt2",
-        max_context_length: Optional[int] = None
+        max_context_length: Optional[int] = None,
+        ranks: Optional[List[int]] = None
     ) -> Tuple[bytes, CompressionResult]:
         """Compress text using LLM rank encoding + Huffman coding with Zipf distribution.
         
@@ -283,14 +290,16 @@ class CompressionPipeline:
             text: Input text to compress
             model_name: LLM model to use for ranking
             max_context_length: Maximum context length for LLM
+            ranks: Pre-computed token ranks (optional, will compute if not provided)
             
         Returns:
             Tuple of (compressed_data, compression_result)
         """
         ranker = self._get_ranker(model_name, max_context_length)
         
-        # Phase 1: Get token ranks (with caching)
-        ranks = self.get_token_ranks_cached(text, ranker)
+        # Phase 1: Get token ranks (with caching) if not provided
+        if ranks is None:
+            ranks = self.get_token_ranks_cached(text, ranker)
         
         # Phase 2: Compress ranks with Zipf-based Huffman coding
         compressed_data, compression_time = self.huffman_compressor.compress_ranks_with_timing(ranks, 'zipf')
@@ -313,7 +322,8 @@ class CompressionPipeline:
         self, 
         text: str, 
         model_name: str = "gpt2",
-        max_context_length: Optional[int] = None
+        max_context_length: Optional[int] = None,
+        ranks: Optional[List[int]] = None
     ) -> Tuple[bytes, CompressionResult]:
         """Compress text using LLM rank encoding + Huffman coding with Zipf distribution (byte format).
         
@@ -321,14 +331,16 @@ class CompressionPipeline:
             text: Input text to compress
             model_name: LLM model to use for ranking
             max_context_length: Maximum context length for LLM
+            ranks: Pre-computed token ranks (optional, will compute if not provided)
             
         Returns:
             Tuple of (compressed_data, compression_result)
         """
         ranker = self._get_ranker(model_name, max_context_length)
         
-        # Phase 1: Get token ranks (with caching)
-        ranks = self.get_token_ranks_cached(text, ranker)
+        # Phase 1: Get token ranks (with caching) if not provided
+        if ranks is None:
+            ranks = self.get_token_ranks_cached(text, ranker)
         
         # Phase 2: Compress ranks with Zipf-based Huffman coding (byte format)
         compressed_data, compression_time = self.huffman_compressor.compress_ranks_with_timing(ranks, 'zipf_bytes')
@@ -435,16 +447,20 @@ class CompressionPipeline:
         Returns:
             Dictionary mapping method names to results
         """
+        # Pre-compute ranks once for all LLM-based methods
+        ranker = self._get_ranker(model_name, max_context_length)
+        ranks = self.get_token_ranks_cached(text, ranker)
+        
         # Define all compression methods with their configurations
         compression_methods = [
             (self.compress_with_llm_ranks, "LLM ranks", "llm_ranks_zlib", 
-             (text, model_name, max_context_length)),
+             (text, model_name, max_context_length, ranks)),
             (self.compress_with_llm_ranks_huffman, "LLM ranks Huffman", "llm_ranks_huffman", 
-             (text, model_name, max_context_length)),
+             (text, model_name, max_context_length, ranks)),
             (self.compress_with_llm_ranks_huffman_zipf, "LLM ranks Huffman Zipf", "llm_ranks_huffman_zipf", 
-             (text, model_name, max_context_length)),
+             (text, model_name, max_context_length, ranks)),
             (self.compress_with_llm_ranks_huffman_zipf_bytes, "LLM ranks Huffman Zipf bytes", "llm_ranks_huffman_zipf_bytes", 
-             (text, model_name, max_context_length)),
+             (text, model_name, max_context_length, ranks)),
             (self.compress_with_llm_ranks_batched, "LLM ranks batched", f"llm_ranks_zlib_batch{batch_size}", 
              (text, model_name, max_context_length, batch_size)),
             (self.compress_with_raw_zlib, "Raw zlib", "raw_zlib", 
