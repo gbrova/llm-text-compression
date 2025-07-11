@@ -23,7 +23,7 @@ jobs:
       run: |
         cd javascript
         mkdir -p dist
-        cp index.html dist/index.html
+        cp visualizer-client.html dist/index.html
         
     - name: Setup Pages
       uses: actions/configure-pages@v4
