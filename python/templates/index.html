@@ -280,18 +280,6 @@
                 ></textarea>
                 <button id="analyzeBtn" class="analyze-btn">🔍 Analyze Text</button>
                 
-                <div class="example-texts">
-                    <div class="example-title">Try these examples:</div>
-                    <div class="example-text" onclick="setExampleText('The quick brown fox jumps over the lazy dog.')">
-                        "The quick brown fox jumps over the lazy dog."
-                    </div>
-                    <div class="example-text" onclick="setExampleText('Hello world! This is a test of the language model.')">
-                        "Hello world! This is a test of the language model."
-                    </div>
-                    <div class="example-text" onclick="setExampleText('To be or not to be, that is the question.')">
-                        "To be or not to be, that is the question."
-                    </div>
-                </div>
             </div>
             
             <div id="resultsSection" class="results-section" style="display: none;">
@@ -417,7 +405,7 @@
         // Auto-analyze on page load if there's example text
         window.addEventListener('load', () => {
             // Set a default example
-            textInput.value = 'The quick brown fox jumps over the lazy dog.';
+            textInput.value = 'My name is Jason and I am 299 years old. Notice that \'299\' is a hard age to predict.';
         });
     </script>
 </body>
