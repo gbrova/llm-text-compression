@@ -11,7 +11,9 @@
     "serve": "npm run serve-visualizer",
     "serve-visualizer": "node server.js",
     "dev": "vite",
-    "build": "vite build",
+    "build": "npm run build-simple",
+    "build-simple": "mkdir -p dist && cp index.html dist/index.html",
+    "build-vite": "vite build",
     "preview": "vite preview",
     "install-deps": "npm install @huggingface/transformers sqlite3"
   },
