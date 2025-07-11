@@ -171,37 +171,6 @@
             white-space: nowrap;
         }
 
-        .legend {
-            margin-top: 25px;
-            padding: 20px;
-            background: white;
-            border-radius: 8px;
-            border: 1px solid #e0e0e0;
-        }
-
-        .legend-title {
-            font-weight: 600;
-            margin-bottom: 10px;
-            color: #333;
-        }
-
-        .legend-gradient {
-            height: 20px;
-            background: linear-gradient(to right, 
-                hsl(120, 70%, 90%) 0%, 
-                hsl(60, 70%, 90%) 50%, 
-                hsl(0, 70%, 90%) 100%);
-            border-radius: 10px;
-            margin-bottom: 10px;
-            border: 1px solid #ddd;
-        }
-
-        .legend-labels {
-            display: flex;
-            justify-content: space-between;
-            font-size: 0.9em;
-            color: #666;
-        }
 
         .loading {
             text-align: center;
@@ -360,17 +329,6 @@
                 
                 <div id="tokensDisplay" class="tokens-display"></div>
                 
-                <div class="legend">
-                    <div class="legend-title">Color Legend</div>
-                    <div class="legend-gradient"></div>
-                    <div class="legend-labels">
-                        <span>Lower Rank (More Predictable)</span>
-                        <span>Higher Rank (Less Predictable)</span>
-                    </div>
-                    <p style="margin-top: 10px; font-size: 0.9em; color: #666;">
-                        Hover over tokens to see their exact rank values. Rank 1 = most likely token given the context.
-                    </p>
-                </div>
             </div>
             
             <div id="compressionSection" class="results-section" style="display: none;">
@@ -439,9 +397,9 @@
         }
 
         function getCompressionRatioClass(ratio) {
-            if (ratio < 0.3) return 'excellent';
-            if (ratio < 0.7) return 'good';
-            return 'poor';
+            if (ratio > 1.0) return 'poor';  // Red only for increases in size
+            if (ratio < 0.3) return 'excellent';  // Green for very good compression
+            return 'good';  // Orange/yellow for modest compression
         }
 
         function displayCompressionResults(results) {
@@ -519,13 +477,20 @@
                         if (data) {
                             const size = data.compressed_size || data.size;
                             const ratio = size / originalSize;
-                            const percentage = ((1 - ratio) * 100).toFixed(1);
                             
                             sizeCell.textContent = `${size} bytes`;
                             
                             const ratioSpan = document.createElement('span');
                             ratioSpan.className = `compression-ratio ${getCompressionRatioClass(ratio)}`;
-                            ratioSpan.textContent = `${percentage}% saved`;
+                            
+                            if (ratio > 1.0) {
+                                const increase = ((ratio - 1) * 100).toFixed(1);
+                                ratioSpan.textContent = `${increase}% larger`;
+                            } else {
+                                const savings = ((1 - ratio) * 100).toFixed(1);
+                                ratioSpan.textContent = `${savings}% saved`;
+                            }
+                            
                             ratioCell.appendChild(ratioSpan);
                         } else {
                             sizeCell.textContent = '—';
